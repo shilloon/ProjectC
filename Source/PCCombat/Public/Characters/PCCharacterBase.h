@@ -12,6 +12,7 @@
 class UPCAbilitySystemComponent;
 class UPCVitalAttributeSet;
 class UPCAbilityData;
+class UPCCombatPresenterComponent;
 struct FOnAttributeChangeData;
 
 /** 판정 코드가 내보낸 GameplayCue를 겉모습 쪽에 전달한다 */
@@ -83,6 +84,9 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<UPCVitalAttributeSet> VitalSet;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PC|Components")
+	TObjectPtr<UPCCombatPresenterComponent> Presenter;
 
 private:
 	void InitializeFromRow();

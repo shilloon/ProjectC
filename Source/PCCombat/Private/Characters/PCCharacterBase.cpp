@@ -12,6 +12,7 @@
 #include "GameplayEffectTypes.h"
 #include "Hit/PCHitResolver.h"
 #include "PCGameplayTags.h"
+#include "Presentation/PCCombatPresenterComponent.h"
 #include "TimerManager.h"
 
 namespace
@@ -29,6 +30,7 @@ APCCharacterBase::APCCharacterBase()
 
 	AbilitySystemComponent = CreateDefaultSubobject<UPCAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	VitalSet = CreateDefaultSubobject<UPCVitalAttributeSet>(TEXT("VitalSet"));
+	Presenter = CreateDefaultSubobject<UPCCombatPresenterComponent>(TEXT("Presenter"));
 }
 
 UAbilitySystemComponent* APCCharacterBase::GetAbilitySystemComponent() const
