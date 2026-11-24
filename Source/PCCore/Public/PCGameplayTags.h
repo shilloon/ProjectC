@@ -1,0 +1,38 @@
+﻿#pragma once
+
+#include "NativeGameplayTags.h"
+
+/** 코드가 참조하는 태그. 개별 기술 이름 같은 콘텐츠 전용 태그는 Config/DefaultGameplayTags.ini에 둔다. */
+namespace PCTags
+{
+	// 행동 단계
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Action);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Action_Windup);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Action_Active);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Action_Recovery);
+
+	// 캐릭터 상태
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Guarding);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Staggered);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(State_Dead);
+
+	// 능력 분류
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Attack);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Guard);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Ability_Dodge);
+
+	// 위험 등급
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Threat_Light);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Threat_Heavy);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Threat_Unblockable);
+
+	// SetByCaller 수치 전달
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Data_Damage);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(Data_Stamina);
+
+	// 겉모습 연결
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Combat_Windup);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Combat_Hit);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Combat_Block);
+	PCCORE_API UE_DECLARE_GAMEPLAY_TAG_EXTERN(GameplayCue_Combat_Interrupt);
+}
