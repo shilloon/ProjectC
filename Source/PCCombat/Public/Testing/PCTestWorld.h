@@ -5,6 +5,8 @@
 #include "Components/StaticMeshComponent.h"
 #include "Data/PCAbilityData.h"
 #include "Data/PCMonsterData.h"
+#include "Data/PCMonsterRankRow.h"
+#include "Engine/DataTable.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/StaticMeshActor.h"
@@ -102,6 +104,23 @@ namespace PCTest
 		Data->HitShape.Range = 200.f;
 		Data->HitShape.HalfAngleDeg = 45.f;
 		return Data;
+	}
+
+	/** 등급 행 하나만 가진 데이터테이블을 메모리에 만들어 몬스터 정의에 연결한다 */
+	inline void SetRank(UPCMonsterData& MonsterData, FGameplayTag RankTag, float Health, float Damage, float StaggerTime)
+	{
+		UDataTable* Table = NewObject<UDataTable>(GetTransientPackage());
+		Table->RowStruct = FPCMonsterRankRow::StaticStruct();
+
+		FPCMonsterRankRow Row;
+		Row.RankTag = RankTag;
+		Row.HealthMultiplier = Health;
+		Row.DamageMultiplier = Damage;
+		Row.StaggerTimeMultiplier = StaggerTime;
+		Table->AddRow(TEXT("Rank"), Row);
+
+		MonsterData.RankRow.DataTable = Table;
+		MonsterData.RankRow.RowName = TEXT("Rank");
 	}
 
 	inline FPCHitInfo MakeHit(AActor* Attacker, const UPCAbilityData* Data)

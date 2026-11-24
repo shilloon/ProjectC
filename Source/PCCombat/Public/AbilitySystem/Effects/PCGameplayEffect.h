@@ -14,8 +14,8 @@ class PCCOMBAT_API UPCGameplayEffect : public UGameplayEffect
 	GENERATED_BODY()
 
 protected:
-	/** Attribute에 SetByCaller(DataTag) 값을 더하는 수정자를 추가한다 */
-	void AddSetByCallerModifier(const FGameplayAttribute& Attribute, FGameplayTag DataTag);
+	/** Attribute에 SetByCaller(DataTag) 값을 적용하는 수정자를 추가한다. 기본은 더하기. */
+	void AddSetByCallerModifier(const FGameplayAttribute& Attribute, FGameplayTag DataTag, EGameplayModOp::Type Operation = EGameplayModOp::Additive);
 
 	/** 지속 시간을 SetByCaller(DataTag)로 받는 기간제 이펙트로 만든다 */
 	void SetDurationFromCaller(FGameplayTag DataTag);

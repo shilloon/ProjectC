@@ -87,8 +87,10 @@ namespace
 			AddRestTask(Hold, HoldInterval);
 			GoToWhenCompleted(Hold, Root);
 
-			// 공격 뒤 숨 고르기. Attack에서 전환으로만 들어온다.
-			AddRestTask(Recover, MinRecoverTime, true);
+			// 공격 뒤 숨 고르기. 대상 주위를 돌며 거리를 잰다. Attack에서 전환으로만 들어온다.
+			auto& Circle = Recover.AddTask<FPCStateTreeTask_CircleTarget>();
+			Circle.GetInstanceData().Duration = MinRecoverTime;
+			Circle.GetInstanceData().bAddAttackRest = true;
 			GoToWhenCompleted(Recover, Root);
 		}
 

@@ -21,6 +21,8 @@ class PCCOMBAT_API UPCGameplayAbility : public UGameplayAbility
 public:
 	UPCGameplayAbility();
 
+	/** 비용을 치르고, 기술 데이터의 이동 속도 배율을 건다. 배율은 능력이 끝날 때 풀린다. */
+	virtual bool CommitAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr) override;
 	virtual bool CheckCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, OUT FGameplayTagContainer* OptionalRelevantTags = nullptr) const override;
 	virtual void ApplyCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo) const override;
 	virtual void EndAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, bool bReplicateEndAbility, bool bWasCancelled) override;
@@ -52,4 +54,7 @@ private:
 	static FGameplayTag PhaseToTag(EPCActionPhase Phase);
 
 	EPCActionPhase CurrentPhase = EPCActionPhase::None;
+
+	/** 실행 중에 걸어 둔 이동 속도 배율 이펙트 */
+	FActiveGameplayEffectHandle MoveSpeedEffectHandle;
 };

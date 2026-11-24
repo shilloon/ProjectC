@@ -42,8 +42,11 @@ public:
 	/** 대상의 몸 표면까지의 수평 거리. 대상이 없으면 아주 큰 값. */
 	float GetDistanceToTarget() const;
 
-	/** 대상 쪽으로 즉시 몸을 돌린다 */
-	void FaceTarget();
+	/** 몬스터의 정면과 대상 방향 사이의 수평 각도 (0~180). 대상이 없으면 180. */
+	float GetAngleToTargetDeg() const;
+
+	/** 대상이 조준 허용 각도 안에 있는가 */
+	bool IsAimedAtTarget() const;
 
 	// ---- 공격 선택 ----
 

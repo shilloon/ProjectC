@@ -18,6 +18,7 @@ public class PCCombat : ModuleRules
 			"NavigationSystem",
 			"StateTreeModule",
 			"GameplayStateTreeModule",
+			"EngineCameras",
 			"PCCore"
 		});
 	}

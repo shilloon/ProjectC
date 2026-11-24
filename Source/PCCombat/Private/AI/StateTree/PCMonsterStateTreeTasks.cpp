@@ -2,6 +2,7 @@
 #include "AI/PCMonsterAIController.h"
 #include "AbilitySystem/PCAbilitySystemComponent.h"
 #include "Characters/PCMonsterBase.h"
+#include "Data/PCMonsterData.h"
 #include "Navigation/PathFollowingComponent.h"
 #include "PCGameplayTags.h"
 #include "StateTreeExecutionContext.h"
@@ -92,7 +93,8 @@ EStateTreeRunStatus FPCStateTreeTask_MoveToTarget::EnterState(FStateTreeExecutio
 	{
 		return EStateTreeRunStatus::Failed;
 	}
-	if (Controller->IsWithinApproachRange())
+	// 다가가는 도중에 쓸 수 있는 공격이 생기면(예: 돌진 사거리에 들어옴) 거기서 멈춘다
+	if (Controller->HasAvailableAttack() || Controller->IsWithinApproachRange())
 	{
 		return EStateTreeRunStatus::Succeeded;
 	}
@@ -109,7 +111,8 @@ EStateTreeRunStatus FPCStateTreeTask_MoveToTarget::Tick(FStateTreeExecutionConte
 	{
 		return EStateTreeRunStatus::Failed;
 	}
-	if (Controller->IsWithinApproachRange())
+	// 다가가는 도중에 쓸 수 있는 공격이 생기면(예: 돌진 사거리에 들어옴) 거기서 멈춘다
+	if (Controller->HasAvailableAttack() || Controller->IsWithinApproachRange())
 	{
 		return EStateTreeRunStatus::Succeeded;
 	}
@@ -138,44 +141,76 @@ void FPCStateTreeTask_MoveToTarget::ExitState(FStateTreeExecutionContext& Contex
 
 EStateTreeRunStatus FPCStateTreeTask_UseAttack::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	const FInstanceDataType& Data = Context.GetInstanceData(*this);
+	FInstanceDataType& Data = Context.GetInstanceData(*this);
 	APCMonsterAIController* Controller = GetMonsterController(Data);
-	APCMonsterBase* Monster = Controller ? Controller->GetMonster() : nullptr;
-	if (!CanAct(Monster) || !Controller->HasValidTarget())
+	if (!Controller || !CanAct(Controller->GetMonster()) || !Controller->HasValidTarget())
 	{
 		return EStateTreeRunStatus::Failed;
 	}
 
-	const FGameplayTag AbilityTag = Data.AbilityTag.IsValid() ? Data.AbilityTag : Controller->SelectAttack();
-	if (!AbilityTag.IsValid())
+	Data.bActivated = false;
+	Data.AimElapsed = 0.f;
+	Data.SelectedTag = Data.AbilityTag.IsValid() ? Data.AbilityTag : Controller->SelectAttack();
+	if (!Data.SelectedTag.IsValid())
 	{
 		return EStateTreeRunStatus::Failed;
 	}
 
-	// 대상을 바라본 뒤 방향을 고정한다. 공격이 끝나면 ExitState에서 다시 대상을 따라 돈다.
-	Controller->FaceTarget();
-	Controller->ClearFocus(EAIFocusPriority::Gameplay);
-
-	if (!Monster->GetPCAbilitySystemComponent()->TryActivateByAbilityTag(AbilityTag))
+	// 이미 대상을 보고 있으면 바로 쓰고, 아니면 Tick에서 몸이 돌 때까지 기다린다
+	if (Controller->IsAimedAtTarget())
 	{
-		return EStateTreeRunStatus::Failed;
+		return ActivateSelectedAttack(*Controller, Data) ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
 	}
-
-	Controller->NotifyAttackUsed(AbilityTag);
 	return EStateTreeRunStatus::Running;
 }
 
 EStateTreeRunStatus FPCStateTreeTask_UseAttack::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
-	APCMonsterAIController* Controller = GetMonsterController(Context.GetInstanceData(*this));
+	FInstanceDataType& Data = Context.GetInstanceData(*this);
+	APCMonsterAIController* Controller = GetMonsterController(Data);
 	const APCMonsterBase* Monster = Controller ? Controller->GetMonster() : nullptr;
 	if (!Monster)
 	{
 		return EStateTreeRunStatus::Failed;
 	}
 
-	// 공격이 끝났거나 경직으로 끊기면 행동 태그가 사라진다
-	return Monster->HasStateTag(PCTags::State_Action) ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Succeeded;
+	if (Data.bActivated)
+	{
+		// 공격이 끝났거나 경직으로 끊기면 행동 태그가 사라진다
+		return Monster->HasStateTag(PCTags::State_Action) ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Succeeded;
+	}
+
+	// 조준 중: 컨트롤러의 포커스가 몬스터 정의의 회전 속도대로 몸을 돌리고 있다
+	if (!CanAct(Monster) || !Controller->HasValidTarget())
+	{
+		return EStateTreeRunStatus::Failed;
+	}
+
+	Data.AimElapsed += DeltaTime;
+	const UPCMonsterData* MonsterData = Controller->GetMonsterData();
+	const bool bTimedOut = MonsterData && Data.AimElapsed >= MonsterData->MaxAimTime;
+	if (Controller->IsAimedAtTarget() || bTimedOut)
+	{
+		return ActivateSelectedAttack(*Controller, Data) ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Failed;
+	}
+	return EStateTreeRunStatus::Running;
+}
+
+bool FPCStateTreeTask_UseAttack::ActivateSelectedAttack(APCMonsterAIController& Controller, FInstanceDataType& Data)
+{
+	APCMonsterBase* Monster = Controller.GetMonster();
+
+	// 지금 방향으로 고정한다. 공격이 끝나면 ExitState에서 다시 대상을 따라 돈다.
+	Controller.ClearFocus(EAIFocusPriority::Gameplay);
+
+	if (!Monster || !Monster->GetPCAbilitySystemComponent()->TryActivateByAbilityTag(Data.SelectedTag))
+	{
+		return false;
+	}
+
+	Controller.NotifyAttackUsed(Data.SelectedTag);
+	Data.bActivated = true;
+	return true;
 }
 
 void FPCStateTreeTask_UseAttack::ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
@@ -207,4 +242,64 @@ EStateTreeRunStatus FPCStateTreeTask_Rest::Tick(FStateTreeExecutionContext& Cont
 	FInstanceDataType& Data = Context.GetInstanceData(*this);
 	Data.Remaining -= DeltaTime;
 	return Data.Remaining > 0.f ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Succeeded;
+}
+
+// ---- 대상 주위 돌기 ----
+
+EStateTreeRunStatus FPCStateTreeTask_CircleTarget::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
+{
+	FInstanceDataType& Data = Context.GetInstanceData(*this);
+	APCMonsterAIController* Controller = GetMonsterController(Data);
+
+	Data.Remaining = Data.Duration;
+	if (Data.bAddAttackRest && Controller)
+	{
+		Data.Remaining += Controller->ConsumeRestTime();
+	}
+	Data.Direction = FMath::RandBool() ? 1.f : -1.f;
+
+	return Data.Remaining > 0.f ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Succeeded;
+}
+
+EStateTreeRunStatus FPCStateTreeTask_CircleTarget::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
+{
+	FInstanceDataType& Data = Context.GetInstanceData(*this);
+	Data.Remaining -= DeltaTime;
+	if (Data.Remaining <= 0.f)
+	{
+		return EStateTreeRunStatus::Succeeded;
+	}
+
+	APCMonsterAIController* Controller = GetMonsterController(Data);
+	APCMonsterBase* Monster = Controller ? Controller->GetMonster() : nullptr;
+	const UPCMonsterData* MonsterData = Controller ? Controller->GetMonsterData() : nullptr;
+	const AActor* Target = Controller ? Controller->GetTarget() : nullptr;
+
+	// 움직일 수 없거나 움직이지 않는 몬스터는 시간만 보낸다
+	if (!CanAct(Monster) || !MonsterData || !Target || MonsterData->RestMoveSpeedScale <= 0.f)
+	{
+		return EStateTreeRunStatus::Running;
+	}
+
+	FVector ToTarget = Target->GetActorLocation() - Monster->GetActorLocation();
+	ToTarget.Z = 0.f;
+	if (!ToTarget.Normalize())
+	{
+		return EStateTreeRunStatus::Running;
+	}
+
+	// 옆으로 돌되, 너무 가까우면 물러나고 너무 멀면 다가가서 거리 띠를 유지한다
+	FVector MoveDirection = FVector::CrossProduct(FVector::UpVector, ToTarget) * Data.Direction;
+	const float Distance = Controller->GetDistanceToTarget();
+	if (Distance < MonsterData->RestDistanceMin)
+	{
+		MoveDirection -= ToTarget;
+	}
+	else if (Distance > MonsterData->RestDistanceMax)
+	{
+		MoveDirection += ToTarget;
+	}
+
+	Monster->AddMovementInput(MoveDirection.GetSafeNormal(), MonsterData->RestMoveSpeedScale);
+	return EStateTreeRunStatus::Running;
 }

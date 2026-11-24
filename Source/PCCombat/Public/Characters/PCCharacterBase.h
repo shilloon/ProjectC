@@ -49,6 +49,9 @@ public:
 	/** 경직 이펙트를 적용한다. State.Staggered가 붙으면 진행 중인 능력은 모두 취소된다. */
 	void ApplyStagger(float Duration);
 
+	/** FromLocation의 반대쪽으로 Distance만큼 밀려난다. 경직 저항만큼 거리가 줄어든다. */
+	void ApplyKnockback(const FVector& FromLocation, float Distance);
+
 	bool IsDead() const;
 	bool HasStateTag(FGameplayTag Tag) const;
 
@@ -112,10 +115,14 @@ private:
 	void OnStaminaChanged(const FOnAttributeChangeData& Data);
 	void OnStaggerTagChanged(const FGameplayTag Tag, int32 NewCount);
 	void OnDeadTagChanged(const FGameplayTag Tag, int32 NewCount);
+	void OnMoveSpeedMultiplierChanged(const FOnAttributeChangeData& Data);
 	void ExecuteCue(FGameplayTag CueTag, const FPCHitInfo& Hit);
 
 	float GuardHalfAngleDeg = 70.f;
 	float StaminaRegenDelay = 1.f;
+
+	/** 배율이 걸리기 전의 이동 속도 */
+	float BaseMoveSpeed = 500.f;
 
 	FTimerHandle ReviveTimer;
 };

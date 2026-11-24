@@ -18,7 +18,19 @@
 #include "Hit/PCHitResolver.h"
 #include "PCGameplayTags.h"
 #include "Presentation/PCCombatPresenterComponent.h"
+#include "GameFramework/RootMotionSource.h"
 #include "TimerManager.h"
+
+namespace
+{
+	/** 밀려나는 데 걸리는 시간 */
+	constexpr float KnockbackDuration = 0.15f;
+
+	/** 돌진이나 회피 같은 다른 이동보다 밀려남이 우선한다 */
+	constexpr uint16 KnockbackPriority = 10;
+
+	const FName KnockbackSourceName(TEXT("PCKnockback"));
+}
 
 APCCharacterBase::APCCharacterBase()
 {
@@ -48,6 +60,8 @@ void APCCharacterBase::BeginPlay()
 		.AddUObject(this, &APCCharacterBase::OnHealthChanged);
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UPCVitalAttributeSet::GetStaminaAttribute())
 		.AddUObject(this, &APCCharacterBase::OnStaminaChanged);
+	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UPCCombatAttributeSet::GetMoveSpeedMultiplierAttribute())
+		.AddUObject(this, &APCCharacterBase::OnMoveSpeedMultiplierChanged);
 	AbilitySystemComponent->RegisterGameplayTagEvent(PCTags::State_Staggered, EGameplayTagEventType::NewOrRemoved)
 		.AddUObject(this, &APCCharacterBase::OnStaggerTagChanged);
 	AbilitySystemComponent->RegisterGameplayTagEvent(PCTags::State_Dead, EGameplayTagEventType::NewOrRemoved)
@@ -76,7 +90,8 @@ void APCCharacterBase::InitializeFromRow()
 	VitalSet->InitStamina(Row.MaxStamina);
 
 	StaminaRegenDelay = Row.StaminaRegenDelay;
-	GetCharacterMovement()->MaxWalkSpeed = Row.MoveSpeed;
+	BaseMoveSpeed = Row.MoveSpeed;
+	GetCharacterMovement()->MaxWalkSpeed = BaseMoveSpeed * CombatSet->GetMoveSpeedMultiplier();
 
 	// 기력 회복은 계속 걸려 있는 주기 이펙트가 맡는다
 	if (Row.StaminaRegenPerSec > 0.f)
@@ -135,6 +150,7 @@ EPCHitOutcome APCCharacterBase::ReceiveHit(const FPCHitInfo& Hit)
 			AbilitySystemComponent->ApplySetByCallerEffectToSelf(UPCEffect_Stamina::StaticClass(), PCTags::Data_Stamina, -Hit.Data->GuardStaminaDamage, Hit.Attacker);
 		}
 		ExecuteCue(PCTags::GameplayCue_Combat_Block, Hit);
+		ApplyKnockback(Hit.Origin, Hit.Data->BlockedKnockbackDistance);
 
 		if (GetStamina() <= 0.f)
 		{
@@ -151,6 +167,7 @@ EPCHitOutcome APCCharacterBase::ReceiveHit(const FPCHitInfo& Hit)
 		AbilitySystemComponent->ApplySetByCallerEffectToSelf(UPCEffect_Damage::StaticClass(), PCTags::Data_Damage, -Hit.Data->Damage * Hit.DamageMultiplier, Hit.Attacker);
 	}
 	ExecuteCue(PCTags::GameplayCue_Combat_Hit, Hit);
+	ApplyKnockback(Hit.Origin, Hit.Data->KnockbackDistance);
 
 	if (!IsDead() && Hit.Data->StaggerTime > 0.f && (!Hit.Data->bStaggerOnlyOnWindup || bWasWindingUp))
 	{
@@ -189,6 +206,38 @@ void APCCharacterBase::ApplyStagger(float Duration)
 	Parameters.Location = GetActorLocation();
 	Parameters.RawMagnitude = Duration;
 	AbilitySystemComponent->ExecuteGameplayCue(PCTags::GameplayCue_Combat_Interrupt, Parameters);
+}
+
+void APCCharacterBase::ApplyKnockback(const FVector& FromLocation, float Distance)
+{
+	Distance *= 1.f - CombatSet->GetStaggerResistance();
+	if (Distance <= 0.f || IsDead())
+	{
+		return;
+	}
+
+	FVector Direction = GetActorLocation() - FromLocation;
+	Direction.Z = 0.f;
+	if (!Direction.Normalize())
+	{
+		Direction = -GetActorForwardVector();
+	}
+
+	// 짧은 시간 동안 일정한 속도로 밀어서 정해진 거리만큼 정확히 이동시킨다
+	TSharedPtr<FRootMotionSource_ConstantForce> Force = MakeShared<FRootMotionSource_ConstantForce>();
+	Force->InstanceName = KnockbackSourceName;
+	Force->AccumulateMode = ERootMotionAccumulateMode::Override;
+	Force->Priority = KnockbackPriority;
+	Force->Force = Direction * (Distance / KnockbackDuration);
+	Force->Duration = KnockbackDuration;
+	Force->FinishVelocityParams.Mode = ERootMotionFinishVelocityMode::SetVelocity;
+	Force->FinishVelocityParams.SetVelocity = FVector::ZeroVector;
+	GetCharacterMovement()->ApplyRootMotionSource(Force);
+}
+
+void APCCharacterBase::OnMoveSpeedMultiplierChanged(const FOnAttributeChangeData& Data)
+{
+	GetCharacterMovement()->MaxWalkSpeed = BaseMoveSpeed * Data.NewValue;
 }
 
 void APCCharacterBase::OnStaggerTagChanged(const FGameplayTag Tag, int32 NewCount)

@@ -9,7 +9,10 @@
 #include "Engine/StaticMesh.h"
 #include "GameplayEffectTypes.h"
 #include "HAL/IConsoleManager.h"
+#include "GameFramework/PlayerController.h"
 #include "PCGameplayTags.h"
+#include "Presentation/PCCameraShake_Hit.h"
+#include "TimerManager.h"
 
 namespace
 {
@@ -25,6 +28,29 @@ namespace
 	constexpr float OverheadMarkerRadius = 18.f;
 	constexpr float PopupTextDuration = 0.6f;
 	constexpr int32 SectorSegments = 16;
+
+	/** 타격 멈춤 동안의 시간 배율. 완전히 0이면 물리가 불안정해져서 아주 작은 값을 쓴다. */
+	constexpr float HitStopTimeDilation = 0.05f;
+
+	/** 막았을 때는 멈춤과 흔들림을 줄인다 */
+	constexpr float BlockedFeedbackScale = 0.4f;
+
+	/** 내 공격이 닿았을 때의 카메라 흔들림. 맞았을 때보다 약하다. */
+	constexpr float AttackerShakeScale = 0.3f;
+
+	/** 맞았을 때의 카메라 흔들림 강도. 위험한 공격일수록 크다. */
+	float ThreatShakeScale(const UPCAbilityData* Data)
+	{
+		if (Data && Data->ThreatTag.MatchesTag(PCTags::Threat_Unblockable))
+		{
+			return 1.6f;
+		}
+		if (Data && Data->ThreatTag.MatchesTag(PCTags::Threat_Heavy))
+		{
+			return 1.2f;
+		}
+		return 0.7f;
+	}
 
 	FColor ThreatColor(const UPCAbilityData* Data)
 	{
@@ -135,14 +161,54 @@ void UPCCombatPresenterComponent::HandleCombatCue(FGameplayTag CueTag, const FGa
 	else if (CueTag == PCTags::GameplayCue_Combat_Hit)
 	{
 		DrawDebugString(World, Location + OverheadOffset, TEXT("HIT"), nullptr, FColor::Red, PopupTextDuration);
+		PlayHitStop(Data ? Data->HitStopTime : 0.f);
+		PlayCameraShake(ThreatShakeScale(Data));
 	}
 	else if (CueTag == PCTags::GameplayCue_Combat_Block)
 	{
 		DrawDebugString(World, Location + OverheadOffset, TEXT("BLOCK"), nullptr, FColor::Cyan, PopupTextDuration);
+		PlayHitStop(Data ? Data->HitStopTime * BlockedFeedbackScale : 0.f);
+		PlayCameraShake(ThreatShakeScale(Data) * BlockedFeedbackScale);
+	}
+	else if (CueTag == PCTags::GameplayCue_Combat_HitConfirm)
+	{
+		// 내 공격이 닿았다. RawMagnitude가 0이면 상대가 막은 것이다.
+		const float Scale = Parameters.RawMagnitude > 0.f ? 1.f : BlockedFeedbackScale;
+		PlayHitStop(Data ? Data->HitStopTime * Scale : 0.f);
+		PlayCameraShake(AttackerShakeScale * Scale);
 	}
 	else if (CueTag == PCTags::GameplayCue_Combat_Interrupt)
 	{
 		DrawDebugString(World, Location + OverheadOffset * 1.2f, TEXT("STAGGER"), nullptr, FColor::Yellow, Parameters.RawMagnitude);
+	}
+}
+
+void UPCCombatPresenterComponent::PlayHitStop(float Duration)
+{
+	if (Duration <= 0.f || !OwnerCharacter)
+	{
+		return;
+	}
+
+	// 액터만 거의 멈춘다. 월드의 타이머는 그대로 흐르므로 판정 타이밍은 바뀌지 않는다.
+	OwnerCharacter->CustomTimeDilation = HitStopTimeDilation;
+	OwnerCharacter->GetWorldTimerManager().SetTimer(HitStopTimer, this, &UPCCombatPresenterComponent::EndHitStop, Duration, false);
+}
+
+void UPCCombatPresenterComponent::EndHitStop()
+{
+	if (OwnerCharacter)
+	{
+		OwnerCharacter->CustomTimeDilation = 1.f;
+	}
+}
+
+void UPCCombatPresenterComponent::PlayCameraShake(float Scale) const
+{
+	APlayerController* PlayerController = OwnerCharacter ? Cast<APlayerController>(OwnerCharacter->GetController()) : nullptr;
+	if (PlayerController && Scale > 0.f)
+	{
+		PlayerController->ClientStartCameraShake(UPCCameraShake_Hit::StaticClass(), Scale);
 	}
 }
 
@@ -161,10 +227,13 @@ void UPCCombatPresenterComponent::DrawSector(const FVector& Origin, const FVecto
 	FlatForward.Z = 0.f;
 	FlatForward.Normalize();
 
+	// 원형 판정은 한 바퀴를 그린다
+	const float HalfAngle = Shape.ShapeType == EPCHitShapeType::Circle ? 180.f : Shape.HalfAngleDeg;
+
 	FVector Previous = Ground;
 	for (int32 Index = 0; Index <= SectorSegments; ++Index)
 	{
-		const float Angle = -Shape.HalfAngleDeg + (2.f * Shape.HalfAngleDeg) * Index / SectorSegments;
+		const float Angle = -HalfAngle + (2.f * HalfAngle) * Index / SectorSegments;
 		const FVector Point = Ground + FlatForward.RotateAngleAxis(Angle, FVector::UpVector) * Shape.Range;
 		DrawDebugLine(World, Previous, Point, Color, false, Duration, 0, 3.f);
 		Previous = Point;

@@ -31,15 +31,17 @@ void UPCAbilitySystemComponent::CancelByAbilityTag(FGameplayTag AbilityTag)
 	}
 }
 
-void UPCAbilitySystemComponent::ApplySetByCallerEffectToSelf(TSubclassOf<UGameplayEffect> EffectClass, FGameplayTag DataTag, float Magnitude, AActor* Instigator)
+FActiveGameplayEffectHandle UPCAbilitySystemComponent::ApplySetByCallerEffectToSelf(TSubclassOf<UGameplayEffect> EffectClass, FGameplayTag DataTag, float Magnitude, AActor* Instigator)
 {
 	FGameplayEffectContextHandle Context = MakeEffectContext();
 	Context.AddInstigator(Instigator, Instigator);
 
 	const FGameplayEffectSpecHandle SpecHandle = MakeOutgoingSpec(EffectClass, 1.f, Context);
-	if (SpecHandle.IsValid())
+	if (!SpecHandle.IsValid())
 	{
-		SpecHandle.Data->SetSetByCallerMagnitude(DataTag, Magnitude);
-		ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+		return FActiveGameplayEffectHandle();
 	}
+
+	SpecHandle.Data->SetSetByCallerMagnitude(DataTag, Magnitude);
+	return ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 }

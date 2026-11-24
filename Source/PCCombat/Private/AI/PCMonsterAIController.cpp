@@ -109,21 +109,31 @@ float APCMonsterAIController::GetDistanceToTarget() const
 	return FVector::Dist2D(Monster->GetActorLocation(), Current->GetActorLocation()) - Current->GetSimpleCollisionRadius();
 }
 
-void APCMonsterAIController::FaceTarget()
+float APCMonsterAIController::GetAngleToTargetDeg() const
 {
-	APawn* Monster = GetPawn();
+	const APawn* Monster = GetPawn();
 	const APCCharacterBase* Current = Target.Get();
 	if (!Monster || !Current)
 	{
-		return;
+		return 180.f;
 	}
 
 	FVector ToTarget = Current->GetActorLocation() - Monster->GetActorLocation();
 	ToTarget.Z = 0.f;
-	if (!ToTarget.IsNearlyZero())
+	FVector Forward = Monster->GetActorForwardVector();
+	Forward.Z = 0.f;
+	if (!ToTarget.Normalize() || !Forward.Normalize())
 	{
-		Monster->SetActorRotation(ToTarget.Rotation());
+		return 0.f;
 	}
+
+	return FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(FVector::DotProduct(Forward, ToTarget), -1.f, 1.f)));
+}
+
+bool APCMonsterAIController::IsAimedAtTarget() const
+{
+	const UPCMonsterData* Data = GetMonsterData();
+	return Data && GetAngleToTargetDeg() <= Data->AimToleranceDeg;
 }
 
 bool APCMonsterAIController::HasAvailableAttack() const
@@ -174,7 +184,8 @@ void APCMonsterAIController::NotifyAttackUsed(FGameplayTag AbilityTag)
 float APCMonsterAIController::GetApproachRange() const
 {
 	const UPCMonsterData* Data = GetMonsterData();
-	return Data ? FPCMonsterAttackSelector::GetApproachRange(Data->AttackOptions, GetHealthRatio(), GetNow(), LastUsedTimes) : 0.f;
+	const float Distance = GetDistanceToTarget();
+	return Data ? FPCMonsterAttackSelector::GetApproachRange(Data->AttackOptions, Distance, GetHealthRatio(), GetNow(), LastUsedTimes) : Distance;
 }
 
 bool APCMonsterAIController::IsWithinApproachRange() const

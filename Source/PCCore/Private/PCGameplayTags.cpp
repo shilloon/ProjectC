@@ -29,9 +29,11 @@ namespace PCTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Data_Damage, "Data.Damage", "SetByCaller: 체력 변화량");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Data_Stamina, "Data.Stamina", "SetByCaller: 기력 변화량");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Data_Duration, "Data.Duration", "SetByCaller: 지속 시간(초)");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Data_MoveSpeed, "Data.MoveSpeed", "SetByCaller: 이동 속도 배율");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Combat_Windup, "GameplayCue.Combat.Windup", "예비 동작 시작");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Combat_Hit, "GameplayCue.Combat.Hit", "피격");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Combat_HitConfirm, "GameplayCue.Combat.HitConfirm", "내 공격이 닿음 (때린 쪽에 전달)");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Combat_Block, "GameplayCue.Combat.Block", "방패로 막음");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Combat_Interrupt, "GameplayCue.Combat.Interrupt", "경직됨");
 }

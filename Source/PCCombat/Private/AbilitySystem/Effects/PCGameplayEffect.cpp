@@ -2,14 +2,14 @@
 #include "GameplayEffectComponents/TargetTagRequirementsGameplayEffectComponent.h"
 #include "GameplayEffectComponents/TargetTagsGameplayEffectComponent.h"
 
-void UPCGameplayEffect::AddSetByCallerModifier(const FGameplayAttribute& Attribute, FGameplayTag DataTag)
+void UPCGameplayEffect::AddSetByCallerModifier(const FGameplayAttribute& Attribute, FGameplayTag DataTag, EGameplayModOp::Type Operation)
 {
 	FSetByCallerFloat SetByCaller;
 	SetByCaller.DataTag = DataTag;
 
 	FGameplayModifierInfo Modifier;
 	Modifier.Attribute = Attribute;
-	Modifier.ModifierOp = EGameplayModOp::Additive;
+	Modifier.ModifierOp = Operation;
 	Modifier.ModifierMagnitude = FGameplayEffectModifierMagnitude(SetByCaller);
 	Modifiers.Add(Modifier);
 }

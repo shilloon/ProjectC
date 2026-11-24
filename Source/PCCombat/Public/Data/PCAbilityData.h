@@ -34,6 +34,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ability", meta = (ClampMin = 0))
 	float StaminaCost = 0.f;
 
+	/** 이 기술을 쓰는 동안의 이동 속도 배율. 1이면 그대로, 0이면 제자리. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ability", meta = (ClampMin = 0, ClampMax = 1))
+	float MoveSpeedScale = 1.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0))
 	float Damage = 0.f;
 
@@ -44,6 +48,18 @@ public:
 	/** 맞은 대상의 경직 시간. 0이면 경직 없음. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0, Units = "s"))
 	float StaggerTime = 0.f;
+
+	/** 맞은 대상이 공격자 반대쪽으로 밀려나는 거리. 대상의 경직 저항만큼 줄어든다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0, Units = "cm"))
+	float KnockbackDistance = 0.f;
+
+	/** 방패로 막은 대상이 밀려나는 거리 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0, Units = "cm"))
+	float BlockedKnockbackDistance = 0.f;
+
+	/** 타격 순간 때린 쪽과 맞은 쪽이 멈추는 시간 (겉모습 전용) */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0, ClampMax = 0.5, Units = "s"))
+	float HitStopTime = 0.f;
 
 	/** true면 대상이 예비 동작 중일 때만 경직시킨다 (방패 밀기: 타이밍을 맞춰야 끊는다) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack")

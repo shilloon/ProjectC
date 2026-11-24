@@ -132,6 +132,18 @@ bool UPCAbility_MeleeAttack::ApplyHitTo(AActor* Target, const FPCHitInfo& Hit)
 	}
 
 	AlreadyHit.Add(Target);
+
+	// 때린 쪽의 겉모습(타격 멈춤 등)에 공격이 닿았음을 알린다
+	if (UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo())
+	{
+		FGameplayCueParameters Parameters;
+		Parameters.Instigator = Target;
+		Parameters.SourceObject = Hit.Data;
+		Parameters.Location = Target->GetActorLocation();
+		Parameters.RawMagnitude = Outcome == EPCHitOutcome::Blocked ? 0.f : 1.f;
+		ASC->ExecuteGameplayCue(PCTags::GameplayCue_Combat_HitConfirm, Parameters);
+	}
+
 	UE_LOG(LogPC, Log, TEXT("[전투] %s의 %s → %s: %s"), *GetNameSafe(Hit.Attacker), *Hit.Data->AbilityTag.ToString(), *GetNameSafe(Target),
 		Outcome == EPCHitOutcome::Blocked ? TEXT("막힘") : TEXT("맞음"));
 	return true;

@@ -23,23 +23,6 @@ namespace
 		Option.Cooldown = Cooldown;
 		return Option;
 	}
-
-	/** 등급 행 하나만 가진 데이터테이블을 메모리에 만들어 몬스터 정의에 연결한다 */
-	void SetRank(UPCMonsterData& MonsterData, FGameplayTag RankTag, float Health, float Damage, float StaggerTime)
-	{
-		UDataTable* Table = NewObject<UDataTable>(GetTransientPackage());
-		Table->RowStruct = FPCMonsterRankRow::StaticStruct();
-
-		FPCMonsterRankRow Row;
-		Row.RankTag = RankTag;
-		Row.HealthMultiplier = Health;
-		Row.DamageMultiplier = Damage;
-		Row.StaggerTimeMultiplier = StaggerTime;
-		Table->AddRow(TEXT("Rank"), Row);
-
-		MonsterData.RankRow.DataTable = Table;
-		MonsterData.RankRow.RowName = TEXT("Rank");
-	}
 }
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPCMonsterAttackSelectorTest, "PC.Combat.Monster.AttackSelector",
@@ -61,12 +44,14 @@ bool FPCMonsterAttackSelectorTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("가까우면 할퀴기"), FPCMonsterAttackSelector::Select(Options, 100.f, 1.f, 0.0, LastUsed, Random), 0);
 	TestEqual(TEXT("중거리면 돌진"), FPCMonsterAttackSelector::Select(Options, 400.f, 1.f, 0.0, LastUsed, Random), 1);
 	TestEqual(TEXT("어느 범위에도 안 맞으면 없음"), FPCMonsterAttackSelector::Select(Options, 250.f, 1.f, 0.0, LastUsed, Random), static_cast<int32>(INDEX_NONE));
-	TestEqual(TEXT("둘 다 쓸 수 있으면 더 긴 사거리까지만 다가간다"), FPCMonsterAttackSelector::GetApproachRange(Options, 1.f, 0.0, LastUsed), 600.f);
+	TestEqual(TEXT("멀리 있으면 더 긴 사거리까지만 다가간다"), FPCMonsterAttackSelector::GetApproachRange(Options, 700.f, 1.f, 0.0, LastUsed), 600.f);
+	TestEqual(TEXT("두 사거리 사이의 빈 구간에서는 가까운 쪽 공격 거리까지 다가간다"), FPCMonsterAttackSelector::GetApproachRange(Options, 250.f, 1.f, 0.0, LastUsed), 200.f);
+	TestEqual(TEXT("이미 가장 가까운 사거리 안이면 더 다가가지 않는다"), FPCMonsterAttackSelector::GetApproachRange(Options, 100.f, 1.f, 0.0, LastUsed), 100.f);
 
 	// 돌진을 10초에 썼다
 	LastUsed.Add(Lunge, 10.0);
 	TestEqual(TEXT("재사용 대기 중이면 뽑히지 않는다"), FPCMonsterAttackSelector::Select(Options, 400.f, 1.f, 12.0, LastUsed, Random), static_cast<int32>(INDEX_NONE));
-	TestEqual(TEXT("돌진이 대기 중이면 할퀴기 거리까지 다가간다"), FPCMonsterAttackSelector::GetApproachRange(Options, 1.f, 12.0, LastUsed), 200.f);
+	TestEqual(TEXT("돌진이 대기 중이면 할퀴기 거리까지 다가간다"), FPCMonsterAttackSelector::GetApproachRange(Options, 700.f, 1.f, 12.0, LastUsed), 200.f);
 	TestEqual(TEXT("재사용 시간이 지나면 다시 뽑힌다"), FPCMonsterAttackSelector::Select(Options, 400.f, 1.f, 17.0, LastUsed, Random), 1);
 
 	// 체력 구간

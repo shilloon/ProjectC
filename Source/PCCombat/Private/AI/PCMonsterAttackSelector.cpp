@@ -2,9 +2,6 @@
 
 namespace
 {
-	/** 쓸 수 있는 공격이 하나도 없을 때의 접근 거리 */
-	constexpr float FallbackApproachRange = 150.f;
-
 	bool IsHealthInRange(const FPCMonsterAttackOption& Option, float HealthRatio)
 	{
 		return HealthRatio >= Option.MinHealthRatio && HealthRatio <= Option.MaxHealthRatio;
@@ -61,14 +58,19 @@ int32 FPCMonsterAttackSelector::Select(TConstArrayView<FPCMonsterAttackOption> O
 	return LastAvailable;
 }
 
-float FPCMonsterAttackSelector::GetApproachRange(TConstArrayView<FPCMonsterAttackOption> Options, float HealthRatio, double Now,
+float FPCMonsterAttackSelector::GetApproachRange(TConstArrayView<FPCMonsterAttackOption> Options, float Distance, float HealthRatio, double Now,
 	const TMap<FGameplayTag, double>& LastUsedTimes)
 {
+	// 지금보다 가까이 가야 쓸 수 있는 공격 중에서 가장 먼저 닿는(사거리가 가장 긴) 것을 찾는다
 	float ReadyRange = -1.f;
 	float AnyRange = -1.f;
 	for (const FPCMonsterAttackOption& Option : Options)
 	{
 		if (!Option.AbilityTag.IsValid() || Option.Weight <= 0.f || !IsHealthInRange(Option, HealthRatio))
+		{
+			continue;
+		}
+		if (Option.MaxRange >= Distance)
 		{
 			continue;
 		}
@@ -84,5 +86,11 @@ float FPCMonsterAttackSelector::GetApproachRange(TConstArrayView<FPCMonsterAttac
 	{
 		return ReadyRange;
 	}
-	return AnyRange >= 0.f ? AnyRange : FallbackApproachRange;
+	if (AnyRange >= 0.f)
+	{
+		return AnyRange;
+	}
+
+	// 더 다가가서 쓸 공격이 없다. 지금 거리를 돌려주어 제자리에 있게 한다.
+	return Distance;
 }

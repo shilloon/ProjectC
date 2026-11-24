@@ -13,8 +13,12 @@
 
 namespace
 {
-	/** 대상을 따라 몸을 돌리는 속도 (도/초) */
-	constexpr float MonsterTurnRate = 360.f;
+	/** 정의 에셋이 없을 때의 회전 속도 (도/초) */
+	constexpr float DefaultTurnRate = 360.f;
+
+	/** 급출발과 급정지를 줄이기 위한 가속과 감속 */
+	constexpr float MonsterAcceleration = 1200.f;
+	constexpr float MonsterBrakingDeceleration = 700.f;
 }
 
 APCMonsterBase::APCMonsterBase()
@@ -26,7 +30,12 @@ APCMonsterBase::APCMonsterBase()
 	bUseControllerRotationYaw = false;
 	GetCharacterMovement()->bOrientRotationToMovement = false;
 	GetCharacterMovement()->bUseControllerDesiredRotation = true;
-	GetCharacterMovement()->RotationRate = FRotator(0.f, MonsterTurnRate, 0.f);
+	GetCharacterMovement()->RotationRate = FRotator(0.f, DefaultTurnRate, 0.f);
+
+	// 경로를 따라갈 때도 가속과 감속을 거쳐서 움직임이 뚝뚝 끊기지 않게 한다
+	GetCharacterMovement()->bRequestedMoveUseAcceleration = true;
+	GetCharacterMovement()->MaxAcceleration = MonsterAcceleration;
+	GetCharacterMovement()->BrakingDecelerationWalking = MonsterBrakingDeceleration;
 
 	Presenter->bShowWeapons = false;
 }
@@ -67,6 +76,7 @@ void APCMonsterBase::OnStatsInitialized()
 
 	ApplyRank();
 	AbilitySystemComponent->AddLooseGameplayTags(MonsterData->HabitatTags);
+	GetCharacterMovement()->RotationRate = FRotator(0.f, MonsterData->TurnRate, 0.f);
 
 	if (USkeletalMesh* MeshOverride = MonsterData->Mesh.LoadSynchronous())
 	{

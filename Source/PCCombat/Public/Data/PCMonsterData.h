@@ -90,6 +90,29 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI", meta = (ClampMin = 0, Units = "cm"))
 	float LoseTargetRange = 2500.f;
 
+	/** 대상을 따라 몸을 돌리는 속도. 느릴수록 등 뒤를 잡기 쉽다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Aim", meta = (ClampMin = 1, Units = "deg/s"))
+	float TurnRate = 360.f;
+
+	/** 대상이 정면에서 이 각도 안에 들어와야 공격을 시작한다 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Aim", meta = (ClampMin = 1, ClampMax = 180, Units = "deg"))
+	float AimToleranceDeg = 12.f;
+
+	/** 이 시간 안에 조준하지 못하면 보고 있는 방향 그대로 공격한다 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Aim", meta = (ClampMin = 0, Units = "s"))
+	float MaxAimTime = 0.8f;
+
+	/** 숨 고르는 동안 대상 주위를 도는 속도 배율. 0이면 가만히 서 있는다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Rest", meta = (ClampMin = 0, ClampMax = 1))
+	float RestMoveSpeedScale = 0.35f;
+
+	/** 숨 고르는 동안 유지하려는 거리 (대상의 몸 표면까지). 이보다 가까우면 물러나고 멀면 다가간다. */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Rest", meta = (ClampMin = 0, Units = "cm"))
+	float RestDistanceMin = 220.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "AI|Rest", meta = (ClampMin = 0, Units = "cm"))
+	float RestDistanceMax = 380.f;
+
 	/** 비어 있으면 블루프린트에 설정된 메시를 쓴다 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Presentation")
 	TSoftObjectPtr<USkeletalMesh> Mesh;

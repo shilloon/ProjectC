@@ -123,15 +123,17 @@ def create_abilities():
             "DA_PC_Slash", unreal.PCAbility_MeleeAttack, "Ability.Attack.Slash",
             timing=timing(0.25, 0.10, 0.35), stamina_cost=12.0,
             damage=15.0, guard_stamina_damage=15.0, stagger_time=0.0,
-            stagger_only_on_windup=False, threat_tag=light, hit_shape=shape(190.0, 55.0)),
+            stagger_only_on_windup=False, threat_tag=light, hit_shape=shape(190.0, 55.0),
+            move_speed_scale=0.35, knockback_distance=30.0, blocked_knockback_distance=10.0, hit_stop_time=0.06),
         "ShieldBash": create_ability(
             "DA_PC_ShieldBash", unreal.PCAbility_MeleeAttack, "Ability.Attack.ShieldBash",
             timing=timing(0.15, 0.08, 0.45), stamina_cost=20.0,
             damage=3.0, guard_stamina_damage=25.0, stagger_time=1.2,
-            stagger_only_on_windup=True, threat_tag=light, hit_shape=shape(140.0, 45.0)),
+            stagger_only_on_windup=True, threat_tag=light, hit_shape=shape(140.0, 45.0),
+            move_speed_scale=0.2, knockback_distance=120.0, blocked_knockback_distance=60.0, hit_stop_time=0.08),
         "Guard": create_ability(
             "DA_PC_Guard", unreal.PCAbility_Guard, "Ability.Guard",
-            stamina_cost=0.0, guard_half_angle_deg=70.0),
+            stamina_cost=0.0, guard_half_angle_deg=70.0, move_speed_scale=0.5),
         "Dodge": create_ability(
             "DA_PC_Dodge", unreal.PCAbility_Dodge, "Ability.Dodge",
             timing=timing(0.0, 0.20, 0.25), stamina_cost=20.0, dodge_distance=350.0),
@@ -139,13 +141,15 @@ def create_abilities():
             "DA_PC_Claw", unreal.PCAbility_MeleeAttack, "Ability.Attack.Claw",
             timing=timing(0.80, 0.12, 0.90), stamina_cost=0.0,
             damage=20.0, guard_stamina_damage=30.0, stagger_time=0.35,
-            stagger_only_on_windup=False, threat_tag=light, hit_shape=shape(220.0, 50.0)),
+            stagger_only_on_windup=False, threat_tag=light, hit_shape=shape(220.0, 50.0),
+            move_speed_scale=0.0, knockback_distance=90.0, blocked_knockback_distance=40.0, hit_stop_time=0.08),
         "Lunge": create_ability(
             "DA_PC_Lunge", unreal.PCAbility_LungeAttack, "Ability.Attack.Lunge",
             timing=timing(1.00, 0.30, 1.10), stamina_cost=0.0,
             damage=28.0, guard_stamina_damage=45.0, stagger_time=0.5,
             stagger_only_on_windup=False, threat_tag=heavy, hit_shape=shape(170.0, 40.0),
-            lunge_distance=450.0),
+            lunge_distance=450.0,
+            move_speed_scale=0.0, knockback_distance=220.0, blocked_knockback_distance=110.0, hit_stop_time=0.12),
     }
 
 
@@ -214,6 +218,12 @@ def create_monsters(abilities, stats_table, rank_table, tree):
         werewolf.set_editor_property("behavior_tree", tree)
         werewolf.set_editor_property("detection_range", 1500.0)
         werewolf.set_editor_property("lose_target_range", 2500.0)
+        werewolf.set_editor_property("turn_rate", 240.0)
+        werewolf.set_editor_property("aim_tolerance_deg", 12.0)
+        werewolf.set_editor_property("max_aim_time", 0.8)
+        werewolf.set_editor_property("rest_move_speed_scale", 0.35)
+        werewolf.set_editor_property("rest_distance_min", 220.0)
+        werewolf.set_editor_property("rest_distance_max", 380.0)
         werewolf.set_editor_property("scale", 1.3)
         save(werewolf)
     return {"Werewolf": werewolf}

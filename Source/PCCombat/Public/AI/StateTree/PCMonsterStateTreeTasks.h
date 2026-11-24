@@ -88,10 +88,22 @@ struct PCCOMBAT_API FPCStateTreeUseAttackInstanceData : public FPCMonsterStateTr
 	/** 비워 두면 몬스터 정의의 공격 목록에서 고른다. 지정하면 그 기술을 쓴다 (정해진 연속 공격을 만들 때). */
 	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (Categories = "Ability"))
 	FGameplayTag AbilityTag;
+
+	/** 이번에 쓰기로 고른 기술 */
+	UPROPERTY()
+	FGameplayTag SelectedTag;
+
+	/** 조준을 마치고 기술을 발동했는가 */
+	UPROPERTY()
+	bool bActivated = false;
+
+	UPROPERTY()
+	float AimElapsed = 0.f;
 };
 
 /**
- * 대상을 바라보고 공격 하나를 쓴 뒤, 그 공격이 끝날 때까지 기다린다.
+ * 공격 하나를 고르고, 대상을 향해 몸을 돌린 뒤 쓰고, 그 공격이 끝날 때까지 기다린다.
+ * 몸은 몬스터 정의의 회전 속도대로 돈다. 정해진 시간 안에 조준하지 못하면 보고 있는 방향 그대로 공격한다.
  * 공격이 시작되면 방향이 고정되므로, 대상이 옆으로 비켜서면 빗나간다.
  */
 USTRUCT(meta = (DisplayName = "PC: 공격 사용", Category = "PC|Monster"))
@@ -105,6 +117,49 @@ struct PCCOMBAT_API FPCStateTreeTask_UseAttack : public FStateTreeTaskCommonBase
 	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
 	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
 	virtual void ExitState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+
+private:
+	/** 방향을 고정하고 고른 기술을 발동한다. 발동했으면 true. */
+	static bool ActivateSelectedAttack(class APCMonsterAIController& Controller, FInstanceDataType& Data);
+};
+
+// ---------------------------------------------------------------------------------------------
+
+USTRUCT()
+struct PCCOMBAT_API FPCStateTreeCircleTargetInstanceData : public FPCMonsterStateTreeContext
+{
+	GENERATED_BODY()
+
+	/** 기본 시간 */
+	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (ClampMin = 0, Units = "s"))
+	float Duration = 0.f;
+
+	/** true면 마지막 공격이 요구한 숨 고르기 시간(공격 목록의 RestAfter)을 더한다 */
+	UPROPERTY(EditAnywhere, Category = "Parameter")
+	bool bAddAttackRest = true;
+
+	UPROPERTY()
+	float Remaining = 0.f;
+
+	/** 도는 방향: +1 또는 -1 */
+	UPROPERTY()
+	float Direction = 1.f;
+};
+
+/**
+ * 정해진 시간 동안 대상을 바라본 채 주위를 천천히 돌며 거리를 잰다.
+ * 속도와 유지할 거리는 몬스터 정의에서 온다. 속도가 0이면 가만히 서 있는다.
+ */
+USTRUCT(meta = (DisplayName = "PC: 대상 주위 돌기", Category = "PC|Monster"))
+struct PCCOMBAT_API FPCStateTreeTask_CircleTarget : public FStateTreeTaskCommonBase
+{
+	GENERATED_BODY()
+
+	using FInstanceDataType = FPCStateTreeCircleTargetInstanceData;
+	virtual const UStruct* GetInstanceDataType() const override { return FInstanceDataType::StaticStruct(); }
+
+	virtual EStateTreeRunStatus EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const override;
+	virtual EStateTreeRunStatus Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const override;
 };
 
 // ---------------------------------------------------------------------------------------------

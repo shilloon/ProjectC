@@ -4,6 +4,7 @@ UPCCombatAttributeSet::UPCCombatAttributeSet()
 {
 	InitAttackPower(1.f);
 	InitStaggerResistance(0.f);
+	InitMoveSpeedMultiplier(1.f);
 }
 
 void UPCCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
@@ -20,7 +21,7 @@ void UPCCombatAttributeSet::PreAttributeBaseChange(const FGameplayAttribute& Att
 
 void UPCCombatAttributeSet::ClampAttribute(const FGameplayAttribute& Attribute, float& NewValue) const
 {
-	if (Attribute == GetAttackPowerAttribute())
+	if (Attribute == GetAttackPowerAttribute() || Attribute == GetMoveSpeedMultiplierAttribute())
 	{
 		NewValue = FMath::Max(NewValue, 0.f);
 	}

@@ -1,6 +1,7 @@
 ﻿#include "AbilitySystem/Abilities/PCGameplayAbility.h"
 #include "Abilities/Tasks/AbilityTask_WaitDelay.h"
 #include "AbilitySystem/Attributes/PCVitalAttributeSet.h"
+#include "AbilitySystem/Effects/PCEffect_ActionMoveSpeed.h"
 #include "AbilitySystem/Effects/PCEffect_Stamina.h"
 #include "AbilitySystem/PCAbilitySystemComponent.h"
 #include "Characters/PCCharacterBase.h"
@@ -33,6 +34,22 @@ APCCharacterBase* UPCGameplayAbility::GetPCCharacter() const
 	return Cast<APCCharacterBase>(GetAvatarActorFromActorInfo());
 }
 
+bool UPCGameplayAbility::CommitAbility(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, const FGameplayAbilityActivationInfo ActivationInfo, OUT FGameplayTagContainer* OptionalRelevantTags)
+{
+	if (!Super::CommitAbility(Handle, ActorInfo, ActivationInfo, OptionalRelevantTags))
+	{
+		return false;
+	}
+
+	const UPCAbilityData* Data = GetDataFromSpec(*this, Handle, ActorInfo);
+	UPCAbilitySystemComponent* ASC = ActorInfo ? Cast<UPCAbilitySystemComponent>(ActorInfo->AbilitySystemComponent.Get()) : nullptr;
+	if (Data && ASC && !FMath::IsNearlyEqual(Data->MoveSpeedScale, 1.f))
+	{
+		MoveSpeedEffectHandle = ASC->ApplySetByCallerEffectToSelf(UPCEffect_ActionMoveSpeed::StaticClass(), PCTags::Data_MoveSpeed, Data->MoveSpeedScale, ActorInfo->AvatarActor.Get());
+	}
+	return true;
+}
+
 bool UPCGameplayAbility::CheckCost(const FGameplayAbilitySpecHandle Handle, const FGameplayAbilityActorInfo* ActorInfo, OUT FGameplayTagContainer* OptionalRelevantTags) const
 {
 	const UPCAbilityData* Data = GetDataFromSpec(*this, Handle, ActorInfo);
@@ -60,6 +77,15 @@ void UPCGameplayAbility::EndAbility(const FGameplayAbilitySpecHandle Handle, con
 	if (IsEndAbilityValid(Handle, ActorInfo))
 	{
 		SetPhase(EPCActionPhase::None);
+
+		if (MoveSpeedEffectHandle.IsValid())
+		{
+			if (UAbilitySystemComponent* ASC = ActorInfo ? ActorInfo->AbilitySystemComponent.Get() : nullptr)
+			{
+				ASC->RemoveActiveGameplayEffect(MoveSpeedEffectHandle);
+			}
+			MoveSpeedEffectHandle.Invalidate();
+		}
 	}
 	Super::EndAbility(Handle, ActorInfo, ActivationInfo, bReplicateEndAbility, bWasCancelled);
 }

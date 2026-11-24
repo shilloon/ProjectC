@@ -24,6 +24,11 @@ public:
 	FGameplayAttributeData StaggerResistance;
 	ATTRIBUTE_ACCESSORS_BASIC(UPCCombatAttributeSet, StaggerResistance)
 
+	/** 이동 속도 배율. 1이 기본. 기술을 쓰는 동안 느려지는 것이 여기에 걸린다. */
+	UPROPERTY(BlueprintReadOnly, Category = "Combat")
+	FGameplayAttributeData MoveSpeedMultiplier;
+	ATTRIBUTE_ACCESSORS_BASIC(UPCCombatAttributeSet, MoveSpeedMultiplier)
+
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 	virtual void PreAttributeBaseChange(const FGameplayAttribute& Attribute, float& NewValue) const override;
 

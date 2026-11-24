@@ -47,6 +47,15 @@ private:
 	void OnGuardTagChanged(const FGameplayTag Tag, int32 NewCount);
 
 	UStaticMeshComponent* CreateWeaponMesh(const TSoftObjectPtr<UStaticMesh>& Mesh, FName Socket, const FVector& Scale);
+	/** 아주 짧게 액터의 시간을 멈춘다 */
+	void PlayHitStop(float Duration);
+	void EndHitStop();
+
+	/** 플레이어가 조종하는 캐릭터일 때만 카메라를 흔든다 */
+	void PlayCameraShake(float Scale) const;
+
+	FTimerHandle HitStopTimer;
+
 	void DrawSector(const FVector& Origin, const FVector& Forward, const FPCHitShape& Shape, const FColor& Color, float Duration) const;
 
 	UPROPERTY()

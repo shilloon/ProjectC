@@ -77,10 +77,78 @@ bool FPCMonsterBehaviorTest::RunTest(const FString& Parameters)
 	// 대상이 죽으면 놓고, 되살아나면 다시 찾는다
 	UPCAbilityData* Lethal = MakeAttackData(500.f);
 	Target->ReceiveHit(MakeHit(Monster, Lethal));
-	TestWorld.Tick(0.5f);
+	// 하던 행동(공격이나 숨 고르기)을 마친 뒤 대상을 다시 확인하므로 조금 기다린다
+	TestWorld.Tick(1.5f);
 	TestNull(TEXT("대상이 죽으면 놓는다"), Controller->GetTarget());
-	TestWorld.Tick(4.f);
+	TestWorld.Tick(3.5f);
 	TestTrue(TEXT("대상이 되살아나면 다시 찾는다"), Controller->GetTarget() == Target);
+
+	return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPCMonsterAimAndCircleTest, "PC.Combat.Monster.AimAndCircle",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FPCMonsterAimAndCircleTest::RunTest(const FString& Parameters)
+{
+	UStateTree* Tree = UPCStateTreeBuilderLibrary::BuildMeleeMonsterStateTree(GetTransientPackage(), NAME_None, RF_Transient);
+	if (!TestNotNull(TEXT("기본 행동 트리가 만들어진다"), Tree))
+	{
+		return false;
+	}
+
+	FPCTestWorld TestWorld;
+	TestWorld.SpawnFloor();
+
+	UPCAbilityData* Claw = MakeAttackData(4.f);
+	Claw->StaminaCost = 0.f;
+	Claw->Timing.Windup = 0.2f;
+
+	FPCMonsterAttackOption ClawOption;
+	ClawOption.AbilityTag = PCTags::Ability_Attack;
+	ClawOption.MaxRange = 150.f;
+	ClawOption.RestAfter = 2.f;
+
+	// 느리게 도는 몬스터: 90도/초, 조준 제한 시간은 넉넉하게
+	UPCMonsterData* MonsterData = NewObject<UPCMonsterData>(GetTransientPackage());
+	MonsterData->Abilities.Add(Claw);
+	MonsterData->AttackOptions.Add(ClawOption);
+	MonsterData->BehaviorTree = Tree;
+	MonsterData->TurnRate = 90.f;
+	MonsterData->AimToleranceDeg = 10.f;
+	MonsterData->MaxAimTime = 10.f;
+	MonsterData->RestMoveSpeedScale = 0.5f;
+	MonsterData->RestDistanceMin = 100.f;
+	MonsterData->RestDistanceMax = 300.f;
+
+	// 대상은 공격 거리 안이지만 몬스터의 등 뒤에 있다
+	APCTestCharacter* Target = TestWorld.Spawn(FVector(-150, 0, 100), 0.f);
+	APCTestMonster* Monster = TestWorld.SpawnMonster(FVector(0, 0, 100), 0.f, MonsterData);
+	APCMonsterAIController* Controller = Cast<APCMonsterAIController>(Monster->GetController());
+	if (!TestNotNull(TEXT("몬스터에 AI 컨트롤러가 붙는다"), Controller))
+	{
+		return false;
+	}
+
+	// 180도를 90도/초로 돌아야 하므로 1초 뒤에는 아직 조준 중이다
+	TestWorld.Tick(1.f);
+	TestEqual(TEXT("등 뒤의 대상을 바로 공격하지 못한다"), Target->GetHealth(), 100.f);
+	TestFalse(TEXT("조준 중에는 아직 공격을 시작하지 않았다"), Monster->HasStateTag(PCTags::State_Action));
+	TestTrue(TEXT("조준하는 동안 대상 쪽으로 돌고 있다"), Controller->GetAngleToTargetDeg() < 170.f);
+
+	TestWorld.Tick(2.f);
+	TestTrue(TEXT("몸을 다 돌린 뒤에 공격한다"), Target->GetHealth() < 100.f);
+
+	// 공격 뒤 숨 고르는 동안 대상 주위를 돈다
+	const FVector RestStart = Monster->GetActorLocation();
+	float MaxSideways = 0.f;
+	for (int32 Step = 0; Step < 8; ++Step)
+	{
+		TestWorld.Tick(0.2f);
+		MaxSideways = FMath::Max(MaxSideways, FMath::Abs(static_cast<float>(Monster->GetActorLocation().Y - RestStart.Y)));
+	}
+	TestTrue(FString::Printf(TEXT("숨 고르는 동안 옆으로 움직인다 (실제 %.0fcm)"), MaxSideways), MaxSideways > 20.f);
+	TestTrue(TEXT("숨 고르는 동안에도 대상을 바라본다"), Controller->GetAngleToTargetDeg() < 45.f);
 
 	return true;
 }
