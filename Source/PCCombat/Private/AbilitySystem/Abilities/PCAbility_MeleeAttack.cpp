@@ -5,6 +5,7 @@
 #include "GameFramework/Actor.h"
 #include "Hit/PCHitResolver.h"
 #include "PCGameplayTags.h"
+#include "PCLog.h"
 #include "TimerManager.h"
 
 namespace
@@ -36,6 +37,11 @@ void UPCAbility_MeleeAttack::OnPhaseChanged(EPCActionPhase OldPhase, EPCActionPh
 	if (OldPhase == EPCActionPhase::Active)
 	{
 		StopHitChecks();
+		if (!bHasHit && NewPhase == EPCActionPhase::Recovery)
+		{
+			const UPCAbilityData* Data = GetAbilityData();
+			UE_LOG(LogPC, Log, TEXT("[전투] %s의 %s: 빗나감"), *GetNameSafe(GetAvatarActorFromActorInfo()), Data ? *Data->AbilityTag.ToString() : TEXT("?"));
+		}
 	}
 
 	if (NewPhase == EPCActionPhase::Windup)
@@ -89,10 +95,13 @@ void UPCAbility_MeleeAttack::TryHit()
 	Hit.Data = Data;
 
 	AActor* Victim = nullptr;
-	if (FPCHitResolver::ResolveAttack(Hit, Victim) != EPCHitOutcome::Miss)
+	const EPCHitOutcome Outcome = FPCHitResolver::ResolveAttack(Hit, Victim);
+	if (Outcome != EPCHitOutcome::Miss)
 	{
 		bHasHit = true;
 		StopHitChecks();
+		UE_LOG(LogPC, Log, TEXT("[전투] %s의 %s → %s: %s"), *GetNameSafe(Avatar), *Data->AbilityTag.ToString(), *GetNameSafe(Victim),
+			Outcome == EPCHitOutcome::Blocked ? TEXT("막힘") : TEXT("맞음"));
 	}
 }
 

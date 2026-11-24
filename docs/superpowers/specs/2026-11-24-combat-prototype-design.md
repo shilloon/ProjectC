@@ -180,7 +180,12 @@ TSoftObjectPtr<UAnimMontage> Montage;    // 비어 있어도 동작
 
 - 빌드: `Build.bat ProjectCEditor Win64 Development`가 오류 없이 끝난다.
 - 플레이 테스트 체크리스트(3절의 "확인할 판정")를 에디터에서 직접 확인한다.
-- 순수 계산(정면 각도 판정, 처음 닿은 대상 선택)은 자동화 테스트로 분리할 수 있게 함수로 떼어 둔다. 자동화 테스트 작성 여부는 구현 계획에서 정한다.
+- 자동화 테스트(`PC.Combat.*`, `Source/PCCombat/Private/Tests/`)로 판정 규칙을 확인한다.
+  - `HitResolver.Sector`, `HitResolver.Guard`: 부채꼴 범위와 정면 방어 각도 계산.
+  - `Rules.ReceiveHit`: 맞음, 정면 방어, 등 뒤 피격, 막을 수 없는 공격, 방어 중 기력 고갈, 예비 동작 중에만 걸리는 경직, 사망.
+  - `Rules.FirstHit`: 처음 닿은 대상만 맞음, 사이에 끼어든 캐릭터가 대신 맞거나 방패로 막음, 범위 밖 빗나감.
+  - `Rules.AbilityFlow`: 발동, 기력 소모, 단계 진행, 행동 중 재발동 불가, 경직으로 공격 끊김, 기력 부족.
+- 근접 공격의 결과는 Output Log에 `[전투]`로 시작하는 줄로 남는다.
 
 ## 13. 검토했지만 채택하지 않은 안
 
