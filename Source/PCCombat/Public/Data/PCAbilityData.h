@@ -56,6 +56,10 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack")
 	FPCHitShape HitShape;
 
+	/** 돌진 공격 전용: 판정 구간 동안 앞으로 이동하는 거리 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0, Units = "cm"))
+	float LungeDistance = 0.f;
+
 	/** 방어 전용: 정면 기준 막을 수 있는 반각 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Guard", meta = (ClampMin = 0, ClampMax = 180, Units = "deg"))
 	float GuardHalfAngleDeg = 70.f;

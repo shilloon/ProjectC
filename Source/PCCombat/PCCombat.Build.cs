@@ -14,6 +14,10 @@ public class PCCombat : ModuleRules
 			"GameplayTags",
 			"GameplayTasks",
 			"EnhancedInput",
+			"AIModule",
+			"NavigationSystem",
+			"StateTreeModule",
+			"GameplayStateTreeModule",
 			"PCCore"
 		});
 	}

@@ -11,6 +11,7 @@
 
 class UPCAbilitySystemComponent;
 class UPCVitalAttributeSet;
+class UPCCombatAttributeSet;
 class UPCAbilityData;
 class UPCCombatPresenterComponent;
 struct FOnAttributeChangeData;
@@ -56,6 +57,9 @@ public:
 	float GetStamina() const;
 	float GetMaxStamina() const;
 
+	/** 주는 피해에 곱하는 배율 */
+	float GetAttackPower() const;
+
 	FPCOnCombatCue OnCombatCue;
 
 protected:
@@ -63,6 +67,15 @@ protected:
 
 	virtual void HandleDeath();
 	virtual void Revive();
+
+	/** 기본 수치를 읽어 올 행. 자식이 다른 출처(몬스터 정의 등)로 바꿀 수 있다. */
+	virtual FDataTableRowHandle GetStatsRowHandle() const { return CombatantRow; }
+
+	/** 시작할 때 부여할 기술을 모은다 */
+	virtual void GetStartingAbilities(TArray<const UPCAbilityData*>& OutAbilities) const;
+
+	/** 기본 수치를 적용한 뒤, 기술을 부여하기 전에 호출된다 */
+	virtual void OnStatsInitialized() {}
 
 	/** 기본 수치를 읽어 올 데이터테이블 행. 비어 있으면 FPCCombatantRow의 기본값을 쓴다. */
 	UPROPERTY(EditDefaultsOnly, Category = "PC|Data", meta = (RowType = "/Script/PCCombat.PCCombatantRow"))
@@ -85,6 +98,9 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<UPCVitalAttributeSet> VitalSet;
+
+	UPROPERTY()
+	TObjectPtr<UPCCombatAttributeSet> CombatSet;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PC|Components")
 	TObjectPtr<UPCCombatPresenterComponent> Presenter;

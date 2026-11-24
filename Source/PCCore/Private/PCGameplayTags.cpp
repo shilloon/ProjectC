@@ -20,6 +20,12 @@ namespace PCTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Threat_Heavy, "Threat.Heavy", "강한 공격");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Threat_Unblockable, "Threat.Unblockable", "방패로 막을 수 없는 공격");
 
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Monster_Rank, "Monster.Rank", "몬스터 등급");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Monster_Rank_Normal, "Monster.Rank.Normal", "일반");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Monster_Rank_Elite, "Monster.Rank.Elite", "엘리트");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Monster_Rank_Boss, "Monster.Rank.Boss", "보스");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Monster_Habitat, "Monster.Habitat", "몬스터 서식지 (자식: 지역 이름)");
+
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Data_Damage, "Data.Damage", "SetByCaller: 체력 변화량");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Data_Stamina, "Data.Stamina", "SetByCaller: 기력 변화량");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Data_Duration, "Data.Duration", "SetByCaller: 지속 시간(초)");

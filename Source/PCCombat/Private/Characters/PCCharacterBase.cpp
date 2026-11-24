@@ -1,5 +1,6 @@
 ﻿#include "Characters/PCCharacterBase.h"
 #include "AbilitySystem/PCAbilitySystemComponent.h"
+#include "AbilitySystem/Attributes/PCCombatAttributeSet.h"
 #include "AbilitySystem/Attributes/PCVitalAttributeSet.h"
 #include "AbilitySystem/Effects/PCEffect_Damage.h"
 #include "AbilitySystem/Effects/PCEffect_Dead.h"
@@ -28,6 +29,7 @@ APCCharacterBase::APCCharacterBase()
 
 	AbilitySystemComponent = CreateDefaultSubobject<UPCAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
 	VitalSet = CreateDefaultSubobject<UPCVitalAttributeSet>(TEXT("VitalSet"));
+	CombatSet = CreateDefaultSubobject<UPCCombatAttributeSet>(TEXT("CombatSet"));
 	Presenter = CreateDefaultSubobject<UPCCombatPresenterComponent>(TEXT("Presenter"));
 }
 
@@ -52,15 +54,17 @@ void APCCharacterBase::BeginPlay()
 		.AddUObject(this, &APCCharacterBase::OnDeadTagChanged);
 
 	InitializeFromRow();
+	OnStatsInitialized();
 	GrantStartingAbilities();
 }
 
 void APCCharacterBase::InitializeFromRow()
 {
 	FPCCombatantRow Row;
-	if (!CombatantRow.IsNull())
+	const FDataTableRowHandle StatsRow = GetStatsRowHandle();
+	if (!StatsRow.IsNull())
 	{
-		if (const FPCCombatantRow* Found = CombatantRow.GetRow<FPCCombatantRow>(TEXT("APCCharacterBase")))
+		if (const FPCCombatantRow* Found = StatsRow.GetRow<FPCCombatantRow>(TEXT("APCCharacterBase")))
 		{
 			Row = *Found;
 		}
@@ -84,10 +88,17 @@ void APCCharacterBase::InitializeFromRow()
 
 void APCCharacterBase::GrantStartingAbilities()
 {
-	for (const UPCAbilityData* Data : StartingAbilities)
+	TArray<const UPCAbilityData*> Abilities;
+	GetStartingAbilities(Abilities);
+	for (const UPCAbilityData* Data : Abilities)
 	{
 		AbilitySystemComponent->GrantAbilityFromData(Data);
 	}
+}
+
+void APCCharacterBase::GetStartingAbilities(TArray<const UPCAbilityData*>& OutAbilities) const
+{
+	OutAbilities.Append(StartingAbilities);
 }
 
 bool APCCharacterBase::IsDead() const
@@ -104,6 +115,7 @@ float APCCharacterBase::GetHealth() const { return VitalSet->GetHealth(); }
 float APCCharacterBase::GetMaxHealth() const { return VitalSet->GetMaxHealth(); }
 float APCCharacterBase::GetStamina() const { return VitalSet->GetStamina(); }
 float APCCharacterBase::GetMaxStamina() const { return VitalSet->GetMaxStamina(); }
+float APCCharacterBase::GetAttackPower() const { return CombatSet->GetAttackPower(); }
 
 EPCHitOutcome APCCharacterBase::ReceiveHit(const FPCHitInfo& Hit)
 {
@@ -136,7 +148,7 @@ EPCHitOutcome APCCharacterBase::ReceiveHit(const FPCHitInfo& Hit)
 
 	if (Hit.Data->Damage > 0.f)
 	{
-		AbilitySystemComponent->ApplySetByCallerEffectToSelf(UPCEffect_Damage::StaticClass(), PCTags::Data_Damage, -Hit.Data->Damage, Hit.Attacker);
+		AbilitySystemComponent->ApplySetByCallerEffectToSelf(UPCEffect_Damage::StaticClass(), PCTags::Data_Damage, -Hit.Data->Damage * Hit.DamageMultiplier, Hit.Attacker);
 	}
 	ExecuteCue(PCTags::GameplayCue_Combat_Hit, Hit);
 
@@ -164,6 +176,8 @@ void APCCharacterBase::HandleGameplayCue(AActor* Self, FGameplayTag GameplayCueT
 
 void APCCharacterBase::ApplyStagger(float Duration)
 {
+	// 경직 저항만큼 시간이 줄고, 저항이 1이면 경직되지 않는다
+	Duration *= 1.f - CombatSet->GetStaggerResistance();
 	if (Duration <= 0.f || IsDead())
 	{
 		return;

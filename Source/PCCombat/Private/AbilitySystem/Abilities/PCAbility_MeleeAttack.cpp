@@ -1,9 +1,11 @@
 ﻿#include "AbilitySystem/Abilities/PCAbility_MeleeAttack.h"
 #include "AbilitySystemComponent.h"
+#include "Characters/PCCharacterBase.h"
 #include "Data/PCAbilityData.h"
 #include "Engine/World.h"
 #include "GameFramework/Actor.h"
 #include "Hit/PCHitResolver.h"
+#include "Hit/PCHittable.h"
 #include "PCGameplayTags.h"
 #include "PCLog.h"
 #include "TimerManager.h"
@@ -28,7 +30,8 @@ void UPCAbility_MeleeAttack::ActivateAbility(const FGameplayAbilitySpecHandle Ha
 		return;
 	}
 
-	bHasHit = false;
+	AlreadyHit.Reset();
+	bStoppedByContact = false;
 	StartPhase(EPCActionPhase::Windup, Data->Timing.Windup);
 }
 
@@ -37,7 +40,7 @@ void UPCAbility_MeleeAttack::OnPhaseChanged(EPCActionPhase OldPhase, EPCActionPh
 	if (OldPhase == EPCActionPhase::Active)
 	{
 		StopHitChecks();
-		if (!bHasHit && NewPhase == EPCActionPhase::Recovery)
+		if (AlreadyHit.IsEmpty() && NewPhase == EPCActionPhase::Recovery)
 		{
 			const UPCAbilityData* Data = GetAbilityData();
 			UE_LOG(LogPC, Log, TEXT("[전투] %s의 %s: 빗나감"), *GetNameSafe(GetAvatarActorFromActorInfo()), Data ? *Data->AbilityTag.ToString() : TEXT("?"));
@@ -51,7 +54,7 @@ void UPCAbility_MeleeAttack::OnPhaseChanged(EPCActionPhase OldPhase, EPCActionPh
 	else if (NewPhase == EPCActionPhase::Active)
 	{
 		TryHit();
-		if (!bHasHit && GetCurrentPhase() == EPCActionPhase::Active)
+		if (!bStoppedByContact && GetCurrentPhase() == EPCActionPhase::Active)
 		{
 			if (UWorld* World = GetWorld())
 			{
@@ -83,7 +86,7 @@ void UPCAbility_MeleeAttack::TryHit()
 {
 	const UPCAbilityData* Data = GetAbilityData();
 	AActor* Avatar = GetAvatarActorFromActorInfo();
-	if (!Data || !Avatar || bHasHit)
+	if (!Data || !Avatar || bStoppedByContact)
 	{
 		return;
 	}
@@ -93,16 +96,45 @@ void UPCAbility_MeleeAttack::TryHit()
 	Hit.Origin = Avatar->GetActorLocation();
 	Hit.Direction = Avatar->GetActorForwardVector();
 	Hit.Data = Data;
-
-	AActor* Victim = nullptr;
-	const EPCHitOutcome Outcome = FPCHitResolver::ResolveAttack(Hit, Victim);
-	if (Outcome != EPCHitOutcome::Miss)
+	if (const APCCharacterBase* Character = GetPCCharacter())
 	{
-		bHasHit = true;
-		StopHitChecks();
-		UE_LOG(LogPC, Log, TEXT("[전투] %s의 %s → %s: %s"), *GetNameSafe(Avatar), *Data->AbilityTag.ToString(), *GetNameSafe(Victim),
-			Outcome == EPCHitOutcome::Blocked ? TEXT("막힘") : TEXT("맞음"));
+		Hit.DamageMultiplier = Character->GetAttackPower();
 	}
+
+	TArray<AActor*> Candidates;
+	FPCHitResolver::FindHittables(Hit, Candidates);
+
+	const bool bFirstOnly = Data->HitShape.TargetRule == EPCHitTargetRule::FirstOnly;
+	for (AActor* Candidate : Candidates)
+	{
+		if (AlreadyHit.Contains(Candidate))
+		{
+			continue;
+		}
+
+		// 가까운 순서로 적용한다. "처음 닿은 하나" 규칙이면 처음으로 공격을 받은 대상에서 멈춘다.
+		if (ApplyHitTo(Candidate, Hit) && bFirstOnly)
+		{
+			bStoppedByContact = true;
+			StopHitChecks();
+			break;
+		}
+	}
+}
+
+bool UPCAbility_MeleeAttack::ApplyHitTo(AActor* Target, const FPCHitInfo& Hit)
+{
+	IPCHittable* Hittable = Cast<IPCHittable>(Target);
+	const EPCHitOutcome Outcome = Hittable ? Hittable->ReceiveHit(Hit) : EPCHitOutcome::Miss;
+	if (Outcome == EPCHitOutcome::Miss)
+	{
+		return false;
+	}
+
+	AlreadyHit.Add(Target);
+	UE_LOG(LogPC, Log, TEXT("[전투] %s의 %s → %s: %s"), *GetNameSafe(Hit.Attacker), *Hit.Data->AbilityTag.ToString(), *GetNameSafe(Target),
+		Outcome == EPCHitOutcome::Blocked ? TEXT("막힘") : TEXT("맞음"));
+	return true;
 }
 
 void UPCAbility_MeleeAttack::StopHitChecks()

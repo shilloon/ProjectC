@@ -8,7 +8,7 @@ class UPCAbilityData;
 
 /** 자동화 테스트 전용 캐릭터. 에셋 없이 코드로 기술을 넣어 스폰할 수 있다. */
 UCLASS(NotBlueprintable, NotPlaceable, HideDropdown)
-class APCTestCharacter : public APCCharacterBase
+class PCCOMBAT_API APCTestCharacter : public APCCharacterBase
 {
 	GENERATED_BODY()
 

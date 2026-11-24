@@ -11,6 +11,15 @@ namespace
 {
 	/** 범위 검색에 더하는 여유. 대상의 몸 반지름만큼 멀리 있어도 후보에 들어오게 한다. */
 	constexpr float MaxTargetRadius = 150.f;
+
+	/** 원형 판정은 방향을 가리지 않는다 */
+	constexpr float FullCircleHalfAngleDeg = 180.f;
+
+	struct FPCHitCandidate
+	{
+		AActor* Actor = nullptr;
+		float Distance = 0.f;
+	};
 }
 
 bool FPCHitResolver::IsWithinSector(const FVector& Origin, const FVector& Forward, const FVector& Target, float Range, float HalfAngleDeg)
@@ -44,17 +53,25 @@ bool FPCHitResolver::IsAttackFromFront(const FVector& DefenderLocation, const FV
 	return IsWithinSector(DefenderLocation, DefenderForward, AttackOrigin, UE_BIG_NUMBER, GuardHalfAngleDeg);
 }
 
-AActor* FPCHitResolver::FindFirstHittable(const FPCHitInfo& Hit)
+bool FPCHitResolver::IsWithinShape(const FPCHitShape& Shape, const FVector& Origin, const FVector& Forward, const FVector& Target, float ExtraRange)
 {
+	const float HalfAngle = Shape.ShapeType == EPCHitShapeType::Circle ? FullCircleHalfAngleDeg : Shape.HalfAngleDeg;
+	return IsWithinSector(Origin, Forward, Target, Shape.Range + ExtraRange, HalfAngle);
+}
+
+void FPCHitResolver::FindHittables(const FPCHitInfo& Hit, TArray<AActor*>& OutNearestFirst)
+{
+	OutNearestFirst.Reset();
+
 	if (!Hit.Attacker || !Hit.Data)
 	{
-		return nullptr;
+		return;
 	}
 
 	UWorld* World = Hit.Attacker->GetWorld();
 	if (!World)
 	{
-		return nullptr;
+		return;
 	}
 
 	const FPCHitShape& Shape = Hit.Data->HitShape;
@@ -69,41 +86,64 @@ AActor* FPCHitResolver::FindFirstHittable(const FPCHitInfo& Hit)
 	World->OverlapMultiByObjectType(Overlaps, Hit.Origin, FQuat::Identity, ObjectParams,
 		FCollisionShape::MakeSphere(Shape.Range + MaxTargetRadius), QueryParams);
 
-	AActor* Nearest = nullptr;
-	float NearestDistance = UE_BIG_NUMBER;
-
+	TArray<FPCHitCandidate> Candidates;
 	for (const FOverlapResult& Overlap : Overlaps)
 	{
-		AActor* Candidate = Overlap.GetActor();
-		if (!Candidate || Candidate == Nearest || !Candidate->Implements<UPCHittable>())
+		AActor* Actor = Overlap.GetActor();
+		if (!Actor || !Actor->Implements<UPCHittable>())
+		{
+			continue;
+		}
+		// 한 액터의 컴포넌트가 여러 개 겹쳐도 한 번만 센다
+		if (Candidates.ContainsByPredicate([Actor](const FPCHitCandidate& Candidate) { return Candidate.Actor == Actor; }))
 		{
 			continue;
 		}
 
-		const float TargetRadius = Candidate->GetSimpleCollisionRadius();
-		const FVector TargetLocation = Candidate->GetActorLocation();
-		if (!IsWithinSector(Hit.Origin, Hit.Direction, TargetLocation, Shape.Range + TargetRadius, Shape.HalfAngleDeg))
+		const float TargetRadius = Actor->GetSimpleCollisionRadius();
+		const FVector TargetLocation = Actor->GetActorLocation();
+		if (!IsWithinShape(Shape, Hit.Origin, Hit.Direction, TargetLocation, TargetRadius))
 		{
 			continue;
 		}
 
-		const float Distance = FVector::Dist2D(Hit.Origin, TargetLocation) - TargetRadius;
-		if (Distance < NearestDistance)
-		{
-			NearestDistance = Distance;
-			Nearest = Candidate;
-		}
+		Candidates.Add({ Actor, static_cast<float>(FVector::Dist2D(Hit.Origin, TargetLocation)) - TargetRadius });
 	}
 
-	return Nearest;
+	Candidates.Sort([](const FPCHitCandidate& A, const FPCHitCandidate& B) { return A.Distance < B.Distance; });
+
+	for (const FPCHitCandidate& Candidate : Candidates)
+	{
+		OutNearestFirst.Add(Candidate.Actor);
+	}
+}
+
+AActor* FPCHitResolver::FindFirstHittable(const FPCHitInfo& Hit)
+{
+	TArray<AActor*> Candidates;
+	FindHittables(Hit, Candidates);
+	return Candidates.Num() > 0 ? Candidates[0] : nullptr;
 }
 
 EPCHitOutcome FPCHitResolver::ResolveAttack(const FPCHitInfo& Hit, AActor*& OutVictim)
 {
-	OutVictim = FindFirstHittable(Hit);
-	if (IPCHittable* Hittable = Cast<IPCHittable>(OutVictim))
+	OutVictim = nullptr;
+
+	TArray<AActor*> Candidates;
+	FindHittables(Hit, Candidates);
+
+	for (AActor* Candidate : Candidates)
 	{
-		return Hittable->ReceiveHit(Hit);
+		IPCHittable* Hittable = Cast<IPCHittable>(Candidate);
+		const EPCHitOutcome Outcome = Hittable ? Hittable->ReceiveHit(Hit) : EPCHitOutcome::Miss;
+
+		// 이미 죽은 대상처럼 공격을 받지 않는 대상은 가리지 않으므로 다음 대상으로 넘어간다
+		if (Outcome != EPCHitOutcome::Miss)
+		{
+			OutVictim = Candidate;
+			return Outcome;
+		}
 	}
+
 	return EPCHitOutcome::Miss;
 }
