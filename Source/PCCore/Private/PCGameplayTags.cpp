@@ -10,6 +10,7 @@ namespace PCTags
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Guarding, "State.Guarding", "방패를 올리고 있음");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Staggered, "State.Staggered", "경직");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_Dead, "State.Dead", "사망");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(State_StaminaRegenPaused, "State.StaminaRegenPaused", "기력을 쓴 직후라 회복이 멈춰 있음");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_Attack, "Ability.Attack", "공격 능력");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Ability_Guard, "Ability.Guard", "방어 능력");
@@ -21,6 +22,7 @@ namespace PCTags
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Data_Damage, "Data.Damage", "SetByCaller: 체력 변화량");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Data_Stamina, "Data.Stamina", "SetByCaller: 기력 변화량");
+	UE_DEFINE_GAMEPLAY_TAG_COMMENT(Data_Duration, "Data.Duration", "SetByCaller: 지속 시간(초)");
 
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Combat_Windup, "GameplayCue.Combat.Windup", "예비 동작 시작");
 	UE_DEFINE_GAMEPLAY_TAG_COMMENT(GameplayCue_Combat_Hit, "GameplayCue.Combat.Hit", "피격");

@@ -262,4 +262,97 @@ bool FPCCombatAbilityFlowTest::RunTest(const FString& Parameters)
 	return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FPCCombatStateEffectsTest, "PC.Combat.Rules.StateEffects",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FPCCombatStateEffectsTest::RunTest(const FString& Parameters)
+{
+	FPCTestWorld TestWorld;
+	UPCAbilityData* Attack = MakeAttackData(20.f);
+	const FGameplayTagContainer StaggerTags(PCTags::State_Staggered);
+	const FGameplayTagContainer DeadTags(PCTags::State_Dead);
+
+	// 경직: 이펙트가 태그를 붙이고 시간이 지나면 스스로 뗀다
+	{
+		APCTestCharacter* Character = TestWorld.Spawn(FVector(0, 0, 200), 0.f, Attack);
+		UPCAbilitySystemComponent* ASC = Character->GetPCAbilitySystemComponent();
+		TestWorld.Tick(0.1f);
+
+		Character->ApplyStagger(0.5f);
+		TestTrue(TEXT("경직 태그가 붙는다"), Character->HasStateTag(PCTags::State_Staggered));
+		TestEqual(TEXT("경직은 활성 이펙트로 걸려 있다"), ASC->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(StaggerTags)).Num(), 1);
+		TestFalse(TEXT("경직 중에는 발동할 수 없다"), ASC->TryActivateByAbilityTag(PCTags::Ability_Attack));
+
+		TestWorld.Tick(0.7f);
+		TestFalse(TEXT("시간이 지나면 경직이 풀린다"), Character->HasStateTag(PCTags::State_Staggered));
+		TestTrue(TEXT("경직이 풀리면 다시 발동할 수 있다"), ASC->TryActivateByAbilityTag(PCTags::Ability_Attack));
+		Character->Destroy();
+	}
+
+	// 기력 회복: 쓴 직후에는 멈췄다가, 지연 시간이 지나면 주기적으로 오른다
+	{
+		APCTestCharacter* Character = TestWorld.Spawn(FVector(0, 500, 200), 0.f, Attack);
+		UPCAbilitySystemComponent* ASC = Character->GetPCAbilitySystemComponent();
+		TestWorld.Tick(0.1f);
+
+		TestTrue(TEXT("기술이 발동한다"), ASC->TryActivateByAbilityTag(PCTags::Ability_Attack));
+		TestEqual(TEXT("기력이 소모된다"), Character->GetStamina(), 90.f);
+		TestTrue(TEXT("기력을 쓰면 회복 지연 태그가 붙는다"), Character->HasStateTag(PCTags::State_StaminaRegenPaused));
+
+		TestWorld.Tick(0.6f);
+		TestEqual(TEXT("지연 시간 동안은 회복되지 않는다"), Character->GetStamina(), 90.f);
+
+		TestWorld.Tick(1.5f);
+		TestFalse(TEXT("지연 시간이 지나면 지연 태그가 떨어진다"), Character->HasStateTag(PCTags::State_StaminaRegenPaused));
+		TestTrue(TEXT("지연 시간이 지나면 기력이 회복된다"), Character->GetStamina() > 90.f);
+
+		TestWorld.Tick(3.f);
+		TestEqual(TEXT("기력은 최대값을 넘지 않는다"), Character->GetStamina(), Character->GetMaxStamina());
+		Character->Destroy();
+	}
+
+	// 방어 중에는 회복이 멈춘다
+	{
+		APCTestCharacter* Attacker = TestWorld.Spawn(FVector(0, 1000, 200), 0.f);
+		APCTestCharacter* Defender = TestWorld.Spawn(FVector(150, 1000, 200), 180.f);
+		TestWorld.Tick(0.1f);
+
+		Defender->GetPCAbilitySystemComponent()->AddLooseGameplayTag(PCTags::State_Guarding);
+		Defender->ReceiveHit(MakeHit(Attacker, Attack));
+		TestEqual(TEXT("막으면 기력이 줄어든다"), Defender->GetStamina(), 70.f);
+
+		TestWorld.Tick(3.f);
+		TestEqual(TEXT("방패를 든 동안에는 회복되지 않는다"), Defender->GetStamina(), 70.f);
+
+		Defender->GetPCAbilitySystemComponent()->RemoveLooseGameplayTag(PCTags::State_Guarding);
+		TestWorld.Tick(1.f);
+		TestTrue(TEXT("방패를 내리면 회복된다"), Defender->GetStamina() > 70.f);
+		Attacker->Destroy();
+		Defender->Destroy();
+	}
+
+	// 사망과 부활
+	{
+		UPCAbilityData* Lethal = MakeAttackData(500.f);
+		APCTestCharacter* Attacker = TestWorld.Spawn(FVector(0, 1500, 200), 0.f);
+		APCTestCharacter* Victim = TestWorld.Spawn(FVector(150, 1500, 200), 180.f, Attack);
+		UPCAbilitySystemComponent* ASC = Victim->GetPCAbilitySystemComponent();
+		TestWorld.Tick(0.1f);
+
+		Victim->ApplyStagger(10.f);
+		Victim->ReceiveHit(MakeHit(Attacker, Lethal));
+		TestTrue(TEXT("체력이 0이 되면 사망 태그가 붙는다"), Victim->IsDead());
+		TestEqual(TEXT("사망은 활성 이펙트로 걸려 있다"), ASC->GetActiveEffects(FGameplayEffectQuery::MakeQuery_MatchAnyOwningTags(DeadTags)).Num(), 1);
+		TestFalse(TEXT("죽으면 경직 이펙트는 제거된다"), Victim->HasStateTag(PCTags::State_Staggered));
+		TestFalse(TEXT("죽은 동안에는 발동할 수 없다"), ASC->TryActivateByAbilityTag(PCTags::Ability_Attack));
+
+		TestWorld.Tick(3.5f);
+		TestFalse(TEXT("부활 시간이 지나면 사망 태그가 떨어진다"), Victim->IsDead());
+		TestEqual(TEXT("부활하면 체력이 가득 찬다"), Victim->GetHealth(), Victim->GetMaxHealth());
+		TestTrue(TEXT("부활하면 다시 발동할 수 있다"), ASC->TryActivateByAbilityTag(PCTags::Ability_Attack));
+	}
+
+	return true;
+}
+
 #endif // WITH_DEV_AUTOMATION_TESTS

@@ -2,7 +2,11 @@
 #include "AbilitySystem/PCAbilitySystemComponent.h"
 #include "AbilitySystem/Attributes/PCVitalAttributeSet.h"
 #include "AbilitySystem/Effects/PCEffect_Damage.h"
+#include "AbilitySystem/Effects/PCEffect_Dead.h"
+#include "AbilitySystem/Effects/PCEffect_Stagger.h"
 #include "AbilitySystem/Effects/PCEffect_Stamina.h"
+#include "AbilitySystem/Effects/PCEffect_StaminaRegen.h"
+#include "AbilitySystem/Effects/PCEffect_StaminaRegenDelay.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
 #include "Data/PCAbilityData.h"
@@ -14,12 +18,6 @@
 #include "PCGameplayTags.h"
 #include "Presentation/PCCombatPresenterComponent.h"
 #include "TimerManager.h"
-
-namespace
-{
-	/** 기력 회복 타이머 간격 */
-	constexpr float StaminaRegenInterval = 0.1f;
-}
 
 APCCharacterBase::APCCharacterBase()
 {
@@ -43,15 +41,18 @@ void APCCharacterBase::BeginPlay()
 	Super::BeginPlay();
 
 	AbilitySystemComponent->InitAbilityActorInfo(this, this);
-	InitializeFromRow();
-	GrantStartingAbilities();
 
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UPCVitalAttributeSet::GetHealthAttribute())
 		.AddUObject(this, &APCCharacterBase::OnHealthChanged);
 	AbilitySystemComponent->GetGameplayAttributeValueChangeDelegate(UPCVitalAttributeSet::GetStaminaAttribute())
 		.AddUObject(this, &APCCharacterBase::OnStaminaChanged);
+	AbilitySystemComponent->RegisterGameplayTagEvent(PCTags::State_Staggered, EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &APCCharacterBase::OnStaggerTagChanged);
+	AbilitySystemComponent->RegisterGameplayTagEvent(PCTags::State_Dead, EGameplayTagEventType::NewOrRemoved)
+		.AddUObject(this, &APCCharacterBase::OnDeadTagChanged);
 
-	GetWorldTimerManager().SetTimer(StaminaRegenTimer, this, &APCCharacterBase::RegenStamina, StaminaRegenInterval, true);
+	InitializeFromRow();
+	GrantStartingAbilities();
 }
 
 void APCCharacterBase::InitializeFromRow()
@@ -70,9 +71,15 @@ void APCCharacterBase::InitializeFromRow()
 	VitalSet->InitMaxStamina(Row.MaxStamina);
 	VitalSet->InitStamina(Row.MaxStamina);
 
-	StaminaRegenPerSec = Row.StaminaRegenPerSec;
 	StaminaRegenDelay = Row.StaminaRegenDelay;
 	GetCharacterMovement()->MaxWalkSpeed = Row.MoveSpeed;
+
+	// 기력 회복은 계속 걸려 있는 주기 이펙트가 맡는다
+	if (Row.StaminaRegenPerSec > 0.f)
+	{
+		AbilitySystemComponent->ApplySetByCallerEffectToSelf(UPCEffect_StaminaRegen::StaticClass(), PCTags::Data_Stamina,
+			Row.StaminaRegenPerSec * UPCEffect_StaminaRegen::PeriodSeconds, this);
+	}
 }
 
 void APCCharacterBase::GrantStartingAbilities()
@@ -162,29 +169,20 @@ void APCCharacterBase::ApplyStagger(float Duration)
 		return;
 	}
 
-	if (!bStaggered)
-	{
-		bStaggered = true;
-		AbilitySystemComponent->AddLooseGameplayTag(PCTags::State_Staggered);
-	}
-
-	AbilitySystemComponent->CancelAbilities();
-	GetCharacterMovement()->StopMovementImmediately();
+	AbilitySystemComponent->ApplySetByCallerEffectToSelf(UPCEffect_Stagger::StaticClass(), PCTags::Data_Duration, Duration, this);
 
 	FGameplayCueParameters Parameters;
 	Parameters.Location = GetActorLocation();
 	Parameters.RawMagnitude = Duration;
 	AbilitySystemComponent->ExecuteGameplayCue(PCTags::GameplayCue_Combat_Interrupt, Parameters);
-
-	GetWorldTimerManager().SetTimer(StaggerTimer, this, &APCCharacterBase::EndStagger, Duration, false);
 }
 
-void APCCharacterBase::EndStagger()
+void APCCharacterBase::OnStaggerTagChanged(const FGameplayTag Tag, int32 NewCount)
 {
-	if (bStaggered)
+	if (NewCount > 0)
 	{
-		bStaggered = false;
-		AbilitySystemComponent->RemoveLooseGameplayTag(PCTags::State_Staggered);
+		AbilitySystemComponent->CancelAbilities();
+		GetCharacterMovement()->StopMovementImmediately();
 	}
 }
 
@@ -198,44 +196,36 @@ void APCCharacterBase::OnHealthChanged(const FOnAttributeChangeData& Data)
 
 void APCCharacterBase::OnStaminaChanged(const FOnAttributeChangeData& Data)
 {
-	if (Data.NewValue < Data.OldValue)
+	// 기력을 썼으면 잠시 회복을 멈춘다. 다시 쓰면 멈추는 시간이 갱신된다.
+	if (Data.NewValue < Data.OldValue && StaminaRegenDelay > 0.f)
 	{
-		LastStaminaSpendTime = GetWorld()->GetTimeSeconds();
-	}
-}
-
-void APCCharacterBase::RegenStamina()
-{
-	if (IsDead() || HasStateTag(PCTags::State_Guarding))
-	{
-		return;
-	}
-	if (GetWorld()->GetTimeSeconds() - LastStaminaSpendTime < StaminaRegenDelay)
-	{
-		return;
-	}
-	if (GetStamina() < GetMaxStamina())
-	{
-		AbilitySystemComponent->ApplyModToAttribute(UPCVitalAttributeSet::GetStaminaAttribute(), EGameplayModOp::Additive, StaminaRegenPerSec * StaminaRegenInterval);
+		AbilitySystemComponent->ApplySetByCallerEffectToSelf(UPCEffect_StaminaRegenDelay::StaticClass(), PCTags::Data_Duration, StaminaRegenDelay, this);
 	}
 }
 
 void APCCharacterBase::HandleDeath()
 {
-	GetWorldTimerManager().ClearTimer(StaggerTimer);
-	EndStagger();
+	AbilitySystemComponent->RemoveActiveEffectsWithGrantedTags(FGameplayTagContainer(PCTags::State_Staggered));
+	AbilitySystemComponent->ApplyGameplayEffectToSelf(GetDefault<UPCEffect_Dead>(), 1.f, AbilitySystemComponent->MakeEffectContext());
+}
 
-	AbilitySystemComponent->AddLooseGameplayTag(PCTags::State_Dead);
-	AbilitySystemComponent->CancelAbilities();
-	GetCharacterMovement()->DisableMovement();
-
-	GetWorldTimerManager().SetTimer(ReviveTimer, this, &APCCharacterBase::Revive, ReviveDelay, false);
+void APCCharacterBase::OnDeadTagChanged(const FGameplayTag Tag, int32 NewCount)
+{
+	if (NewCount > 0)
+	{
+		AbilitySystemComponent->CancelAbilities();
+		GetCharacterMovement()->DisableMovement();
+		GetWorldTimerManager().SetTimer(ReviveTimer, this, &APCCharacterBase::Revive, ReviveDelay, false);
+	}
+	else
+	{
+		GetCharacterMovement()->SetMovementMode(MOVE_Walking);
+	}
 }
 
 void APCCharacterBase::Revive()
 {
-	AbilitySystemComponent->RemoveLooseGameplayTag(PCTags::State_Dead);
+	AbilitySystemComponent->RemoveActiveEffectsWithGrantedTags(FGameplayTagContainer(PCTags::State_Dead));
 	VitalSet->SetHealth(GetMaxHealth());
 	VitalSet->SetStamina(GetMaxStamina());
-	GetCharacterMovement()->SetMovementMode(MOVE_Walking);
 }

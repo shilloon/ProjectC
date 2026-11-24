@@ -103,10 +103,10 @@ ACharacter
 
 ```
 State.Action.Windup / Active / Recovery
-State.Guarding / Staggered / Dead
+State.Guarding / Staggered / Dead / StaminaRegenPaused
 Ability.Attack / Guard / Dodge
 Threat.Light / Heavy / Unblockable
-Data.Damage / Stamina                       이펙트에 수치를 전달 (SetByCaller)
+Data.Damage / Stamina / Duration            이펙트에 수치를 전달 (SetByCaller)
 GameplayCue.Combat.Windup / Hit / Block / Interrupt
 ```
 
@@ -116,7 +116,19 @@ GameplayCue.Combat.Windup / Hit / Block / Interrupt
 - `State.Staggered` 또는 `State.Dead`이면 모든 능력 발동이 막힌다.
 - 한 번에 하나의 행동만 한다. `State.Action.*`이나 `State.Guarding`이 있으면 다른 능력은 발동하지 않는다.
 - 경직이 부여되면 진행 중인 능력이 모두 취소된다.
-- 경직과 사망은 1단계에서 GameplayEffect가 아니라 캐릭터가 직접 붙이는 태그와 타이머로 처리한다. 태그를 부여하는 이펙트를 C++만으로 정의하기가 번거롭기 때문이며, 필요해지면 이펙트로 옮긴다. 피해와 기력 변화는 GameplayEffect로 처리한다.
+- 상태와 수치 변화는 모두 GameplayEffect가 맡는다. 이펙트는 `UPCGameplayEffect`의 자식으로 C++에 정의하고, 수치는 SetByCaller로 받는다.
+
+| 이펙트 | 종류 | 하는 일 |
+|---|---|---|
+| `PCEffect_Damage` | 즉시 | 체력 변화 |
+| `PCEffect_Stamina` | 즉시 | 기력 변화 (기술 비용, 막았을 때 소모) |
+| `PCEffect_Stagger` | 기간 | `State.Staggered` 부여 |
+| `PCEffect_Dead` | 무기한 | `State.Dead` 부여. 부활할 때 제거 |
+| `PCEffect_StaminaRegen` | 무기한, 0.1초 주기 | 기력 회복. `State.Guarding`, `State.Dead`, `State.StaminaRegenPaused` 중 하나라도 있으면 멈춤 |
+| `PCEffect_StaminaRegenDelay` | 기간 | `State.StaminaRegenPaused` 부여. 기력을 쓸 때마다 시간 갱신 |
+
+- 캐릭터는 태그 변화에 반응만 한다. `State.Staggered`가 붙으면 능력을 취소하고 멈추며, `State.Dead`가 붙으면 능력을 취소하고 이동을 끈 뒤 부활 타이머를 건다.
+- 처음에는 경직, 사망, 기력 회복을 캐릭터의 태그와 타이머로 처리했으나, 플레이 테스트 중 사용자 요청으로 이펙트로 옮겼다 (2026-11-24).
 
 ## 8. 데이터
 
@@ -185,6 +197,7 @@ TSoftObjectPtr<UAnimMontage> Montage;    // 비어 있어도 동작
   - `Rules.ReceiveHit`: 맞음, 정면 방어, 등 뒤 피격, 막을 수 없는 공격, 방어 중 기력 고갈, 예비 동작 중에만 걸리는 경직, 사망.
   - `Rules.FirstHit`: 처음 닿은 대상만 맞음, 사이에 끼어든 캐릭터가 대신 맞거나 방패로 막음, 범위 밖 빗나감.
   - `Rules.AbilityFlow`: 발동, 기력 소모, 단계 진행, 행동 중 재발동 불가, 경직으로 공격 끊김, 기력 부족.
+  - `Rules.StateEffects`: 경직이 시간이 지나면 풀림, 기력 회복 지연과 주기 회복, 방어 중 회복 정지, 사망과 부활.
 - 근접 공격의 결과는 Output Log에 `[전투]`로 시작하는 줄로 남는다.
 
 ## 13. 검토했지만 채택하지 않은 안

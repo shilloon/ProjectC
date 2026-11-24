@@ -20,7 +20,8 @@ DECLARE_MULTICAST_DELEGATE_TwoParams(FPCOnCombatCue, FGameplayTag /*CueTag*/, co
 
 /**
  * 전투에 참여하는 모든 캐릭터의 부모.
- * 능력 시스템, 체력/기력, 피격 처리, 경직, 사망과 부활을 가진다.
+ * 능력 시스템, 체력/기력, 피격 처리를 가진다.
+ * 경직, 사망, 기력 회복은 GameplayEffect가 태그와 수치를 관리하고, 이 클래스는 태그 변화에 반응만 한다.
  */
 UCLASS(Abstract)
 class PCCOMBAT_API APCCharacterBase : public ACharacter, public IAbilitySystemInterface, public IPCHittable, public IGameplayCueInterface
@@ -44,7 +45,7 @@ public:
 	/** 방어 능력이 발동할 때 막을 수 있는 각도를 알려준다 */
 	void SetGuardHalfAngle(float HalfAngleDeg) { GuardHalfAngleDeg = HalfAngleDeg; }
 
-	/** 경직시킨다. 진행 중인 능력은 모두 취소된다. */
+	/** 경직 이펙트를 적용한다. State.Staggered가 붙으면 진행 중인 능력은 모두 취소된다. */
 	void ApplyStagger(float Duration);
 
 	bool IsDead() const;
@@ -93,17 +94,12 @@ private:
 	void GrantStartingAbilities();
 	void OnHealthChanged(const FOnAttributeChangeData& Data);
 	void OnStaminaChanged(const FOnAttributeChangeData& Data);
-	void RegenStamina();
-	void EndStagger();
+	void OnStaggerTagChanged(const FGameplayTag Tag, int32 NewCount);
+	void OnDeadTagChanged(const FGameplayTag Tag, int32 NewCount);
 	void ExecuteCue(FGameplayTag CueTag, const FPCHitInfo& Hit);
 
 	float GuardHalfAngleDeg = 70.f;
-	float StaminaRegenPerSec = 25.f;
 	float StaminaRegenDelay = 1.f;
-	double LastStaminaSpendTime = -1000.0;
-	bool bStaggered = false;
 
-	FTimerHandle StaminaRegenTimer;
-	FTimerHandle StaggerTimer;
 	FTimerHandle ReviveTimer;
 };
