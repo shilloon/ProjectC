@@ -2,7 +2,8 @@
 
 - 작성일: 2026-11-24
 - 엔진: UE 5.8.4 (`C:\Program Files\Epic Games\UE_5.8`)
-- 상태: 사용자 승인됨 (구조), 구현 계획 작성 전
+- 상태: 사용자 승인됨 (구조). 구현 계획: `docs/superpowers/plans/2026-11-24-combat-prototype-stage1.md`
+- 이 문서는 실험 결과에 따라 계속 바뀐다.
 
 ## 1. 목적
 
@@ -73,6 +74,7 @@ Source/
     └─ UI/
 ```
 
+- 각 모듈은 `Public/`(헤더)과 `Private/`(구현) 폴더로 나누고, 위 폴더 구조는 양쪽에 같은 모양으로 둔다. 게임 모드는 `Game/`에 둔다.
 - 의존 방향: `PCCombat → PCCore`. 두 모듈 모두 `ProjectC`(템플릿) 헤더를 포함하지 않는다.
 - 이후 실험은 `PCStats`, `PCInventory` 같은 모듈로 추가하고, 공통 의존은 `PCCore`로 한정한다.
 - 접두사는 `PC`. 파일 하나에 클래스 하나, 파일명은 클래스명과 같게 한다.
@@ -104,29 +106,33 @@ State.Action.Windup / Active / Recovery
 State.Guarding / Staggered / Dead
 Ability.Attack / Guard / Dodge
 Threat.Light / Heavy / Unblockable
-Event.Hit.Landed / Blocked / Interrupted
-GameplayCue.Combat.Windup / Hit / Block
+Data.Damage / Stamina                       이펙트에 수치를 전달 (SetByCaller)
+GameplayCue.Combat.Windup / Hit / Block / Interrupt
 ```
+
+코드가 참조하는 태그는 `PCCore`에 네이티브로 선언한다. 개별 기술 이름(`Ability.Attack.Slash`, `Ability.Attack.ShieldBash`, `Ability.Attack.Claw`)은 콘텐츠 전용이라 `Config/DefaultGameplayTags.ini`에 둔다.
 
 규칙:
 - `State.Staggered` 또는 `State.Dead`이면 모든 능력 발동이 막힌다.
-- 한 번에 하나의 행동만 한다. `State.Action.*`이 있으면 다른 행동 능력은 발동하지 않는다.
-- 경직이 부여되면 진행 중인 `Ability.*` 능력이 취소된다.
+- 한 번에 하나의 행동만 한다. `State.Action.*`이나 `State.Guarding`이 있으면 다른 능력은 발동하지 않는다.
+- 경직이 부여되면 진행 중인 능력이 모두 취소된다.
+- 경직과 사망은 1단계에서 GameplayEffect가 아니라 캐릭터가 직접 붙이는 태그와 타이머로 처리한다. 태그를 부여하는 이펙트를 C++만으로 정의하기가 번거롭기 때문이며, 필요해지면 이펙트로 옮긴다. 피해와 기력 변화는 GameplayEffect로 처리한다.
 
 ## 8. 데이터
 
 ### `UPCAbilityData` (UPrimaryDataAsset, 기술 하나당 하나)
 
 ```cpp
-FGameplayTag        AbilityTag;
+TSubclassOf<UGameplayAbility> AbilityClass; // 이 기술을 실행하는 능력 클래스
+FGameplayTag        AbilityTag;          // 입력과 AI가 이 태그로 발동
 FPCActionTiming     Timing;              // Windup, Active, Recovery (초)
 float               StaminaCost;
 float               Damage;
 float               GuardStaminaDamage;  // 막혔을 때 상대 기력을 깎는 양
-float               StaggerTime;         // 맞은 쪽 경직 시간
-bool                bInterruptsWindup;   // 예비 동작 중인 상대를 끊는가
+float               StaggerTime;         // 맞은 쪽 경직 시간. 0이면 경직 없음
+bool                bStaggerOnlyOnWindup; // true면 상대가 예비 동작 중일 때만 경직 (방패 밀기)
 FGameplayTag        ThreatTag;
-FPCHitShape         HitShape;            // Range, Radius, HalfAngleDeg
+FPCHitShape         HitShape;            // 정면 부채꼴: Range, HalfAngleDeg
 float               GuardHalfAngleDeg;   // 방어 전용: 정면 기준 막을 수 있는 반각
 float               DodgeDistance;       // 회피 전용: 이동 거리 (cm)
 TSoftObjectPtr<UAnimMontage> Montage;    // 비어 있어도 동작
@@ -142,24 +148,26 @@ TSoftObjectPtr<UAnimMontage> Montage;    // 비어 있어도 동작
 
 1. 입력 또는 AI가 능력 발동을 요청한다. 기력 부족, `State.Staggered`, 다른 행동 진행 중이면 발동하지 않는다.
 2. 예비 동작: `State.Action.Windup` 부여, `GameplayCue.Combat.Windup` 실행.
-3. 판정: `PCHitResolver`가 공격 범위를 훑어 가까운 순으로 정렬하고, 처음 닿은 `IPCHittable` 하나를 고른다. 없으면 빗나감.
+3. 판정: 판정 구간 동안 `PCHitResolver`가 공격 범위(정면 부채꼴)를 짧은 간격으로 반복해서 훑고, 범위 안에서 가장 가까운 `IPCHittable` 하나를 고른다. 한 번 닿으면 더 훑지 않는다. 구간이 끝날 때까지 닿은 대상이 없으면 빗나감.
 4. 대상의 `ReceiveHit`:
    - `State.Guarding`이고, 공격이 정면 허용 각도 안에서 왔고, 위험 등급이 `Unblockable`이 아니면 **막힘**. 기력을 `GuardStaminaDamage`만큼 깎는다. 기력이 바닥나면 방어가 풀리고 경직된다.
-   - 그 외에는 **맞음**. 피해 이펙트를 적용하고 `StaggerTime`만큼 경직시킨다.
-   - `bInterruptsWindup`이고 대상이 `State.Action.Windup`이면 대상의 공격을 취소하고 경직시킨다.
+   - 그 외에는 **맞음**. 피해 이펙트를 적용하고 `StaggerTime`만큼 경직시킨다. 경직되면 진행 중이던 공격이 취소된다.
+   - `bStaggerOnlyOnWindup`인 공격은 대상이 `State.Action.Windup`일 때만 경직시킨다. 방패 밀기는 타이밍을 맞춰야 상대의 공격을 끊는다.
 5. 후딜 → 능력 종료. 기력은 일정 시간 뒤 회복을 시작한다.
 
 ## 10. 겉모습 (임시)
 
 - 캐릭터는 마네킹. 늑대인간은 크기와 색을 바꾼 마네킹.
 - 검과 방패는 손에 붙인 기본 도형. 방어 중에는 방패 도형이 앞으로 올라온다.
-- 예비 동작은 몸 색 변화와 디버그 도형으로 표시한다.
-- 바닥 범위 표시는 콘솔 변수로 켜고 끈다.
+- 예비 동작은 머리 위 표시로 알린다. 색은 위험 등급에 따라 노랑(Light), 주황(Heavy), 빨강(Unblockable)이다.
+- 맞음, 막힘, 경직은 머리 위 글자로 표시한다.
+- 바닥 범위 표시는 콘솔 변수 `pc.Combat.ShowTelegraph`로 켜고 끈다.
+- 체력과 기력은 임시 HUD가 막대로 그린다.
 - 모두 GameplayCue와 이벤트를 듣는 쪽에 두어, 나중에 모델과 애니메이션으로 교체해도 판정 코드는 바뀌지 않게 한다.
 
-## 11. 에디터 작업 (사용자)
+## 11. 에셋
 
-Claude는 `.uasset`을 만들 수 없으므로 아래는 사용자가 에디터에서 만든다. 구현 계획에 단계별 안내를 넣는다.
+`Content/`는 저장소에 올리지 않는다. 대신 아래 에셋을 만드는 에디터 Python 스크립트(`Tools/pc_create_combat_assets.py`)를 저장소에 두고, 에디터에서 한 번 실행해 만든다. 수치를 바꿀 때도 스크립트의 값을 고치고 다시 실행한다. 스크립트로 안 되는 항목은 에디터에서 직접 만든다.
 
 - 플레이어와 늑대인간의 블루프린트 자식 (메시, 능력 목록 지정)
 - 기술 데이터 에셋 (베기, 방패 밀기, 방어, 회피, 할퀴기)
