@@ -15,8 +15,11 @@ DerivedDataCache/
 *.opensdf
 *.sdf
 
-# 에셋 (테스트용이라 저장소에 올리지 않음)
-Content/
+# 에셋: 기본은 올리지 않는다 (템플릿 콘텐츠, 모델, 텍스처 등 큰 파일).
+# 우리가 만든 작은 에셋(데이터 에셋, 블루프린트, 행동 트리, 테스트 레벨)이 있는 Content/PC/ 만 포함한다.
+# 포함 범위를 넓히기 전에는 무엇을 왜 넣는지와 용량을 먼저 상의한다.
+Content/*
+!Content/PC/
 
 # Claude Code 로컬 설정
 .claude/settings.local.json

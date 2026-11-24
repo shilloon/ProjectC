@@ -21,14 +21,29 @@ namespace
 		return Monster && !Monster->IsDead() && !Monster->HasStateTag(PCTags::State_Staggered);
 	}
 
-	void RequestMove(APCMonsterAIController& Controller)
+	/** 이동을 요청한다. 길찾기도 직선 경로도 받아들여지지 않으면 false. */
+	bool RequestMove(APCMonsterAIController& Controller)
 	{
 		AActor* Target = Controller.GetTarget();
-		const EPathFollowingRequestResult::Type Result = Controller.MoveToActor(Target, MoveAcceptanceRadius, false, true, false);
+		EPathFollowingRequestResult::Type Result = Controller.MoveToActor(Target, MoveAcceptanceRadius, false, true, false);
 		if (Result == EPathFollowingRequestResult::Failed)
 		{
 			// 내비게이션 메시가 없는 곳에서는 대상 방향으로 직진한다
-			Controller.MoveToActor(Target, MoveAcceptanceRadius, false, false, false);
+			Result = Controller.MoveToActor(Target, MoveAcceptanceRadius, false, false, false);
+		}
+		return Result != EPathFollowingRequestResult::Failed;
+	}
+
+	/** 경로 추종 없이 대상 방향으로 한 프레임 걸어간다 */
+	void SteerTowardTarget(const APCMonsterAIController& Controller)
+	{
+		APawn* Monster = Controller.GetPawn();
+		const AActor* Target = Controller.GetTarget();
+		if (Monster && Target)
+		{
+			FVector ToTarget = Target->GetActorLocation() - Monster->GetActorLocation();
+			ToTarget.Z = 0.f;
+			Monster->AddMovementInput(ToTarget.GetSafeNormal());
 		}
 	}
 }
@@ -71,7 +86,8 @@ EStateTreeRunStatus FPCStateTreeTask_AcquireTarget::Tick(FStateTreeExecutionCont
 
 EStateTreeRunStatus FPCStateTreeTask_MoveToTarget::EnterState(FStateTreeExecutionContext& Context, const FStateTreeTransitionResult& Transition) const
 {
-	APCMonsterAIController* Controller = GetMonsterController(Context.GetInstanceData(*this));
+	FInstanceDataType& Data = Context.GetInstanceData(*this);
+	APCMonsterAIController* Controller = GetMonsterController(Data);
 	if (!Controller || !CanAct(Controller->GetMonster()) || !Controller->HasValidTarget())
 	{
 		return EStateTreeRunStatus::Failed;
@@ -81,13 +97,14 @@ EStateTreeRunStatus FPCStateTreeTask_MoveToTarget::EnterState(FStateTreeExecutio
 		return EStateTreeRunStatus::Succeeded;
 	}
 
-	RequestMove(*Controller);
+	Data.bSteeringDirectly = !RequestMove(*Controller);
 	return EStateTreeRunStatus::Running;
 }
 
 EStateTreeRunStatus FPCStateTreeTask_MoveToTarget::Tick(FStateTreeExecutionContext& Context, const float DeltaTime) const
 {
-	APCMonsterAIController* Controller = GetMonsterController(Context.GetInstanceData(*this));
+	FInstanceDataType& Data = Context.GetInstanceData(*this);
+	APCMonsterAIController* Controller = GetMonsterController(Data);
 	if (!Controller || !CanAct(Controller->GetMonster()) || !Controller->HasValidTarget())
 	{
 		return EStateTreeRunStatus::Failed;
@@ -97,10 +114,14 @@ EStateTreeRunStatus FPCStateTreeTask_MoveToTarget::Tick(FStateTreeExecutionConte
 		return EStateTreeRunStatus::Succeeded;
 	}
 
-	// 이동이 끝났는데 아직 멀면 다시 요청한다
-	if (Controller->GetMoveStatus() == EPathFollowingStatus::Idle)
+	if (Data.bSteeringDirectly)
 	{
-		RequestMove(*Controller);
+		SteerTowardTarget(*Controller);
+	}
+	else if (Controller->GetMoveStatus() == EPathFollowingStatus::Idle)
+	{
+		// 이동이 끝났는데 아직 멀면 다시 요청한다
+		Data.bSteeringDirectly = !RequestMove(*Controller);
 	}
 	return EStateTreeRunStatus::Running;
 }
@@ -173,7 +194,11 @@ EStateTreeRunStatus FPCStateTreeTask_Rest::EnterState(FStateTreeExecutionContext
 	FInstanceDataType& Data = Context.GetInstanceData(*this);
 	APCMonsterAIController* Controller = GetMonsterController(Data);
 
-	Data.Remaining = Data.Duration > 0.f ? Data.Duration : (Controller ? Controller->ConsumeRestTime() : 0.f);
+	Data.Remaining = Data.Duration;
+	if (Data.bAddAttackRest && Controller)
+	{
+		Data.Remaining += Controller->ConsumeRestTime();
+	}
 	return Data.Remaining > 0.f ? EStateTreeRunStatus::Running : EStateTreeRunStatus::Succeeded;
 }
 

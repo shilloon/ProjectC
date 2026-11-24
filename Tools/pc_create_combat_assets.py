@@ -1,18 +1,28 @@
-"""전투 프로토타입 1단계 에셋을 만든다. 여러 번 실행해도 된다.
+"""전투 프로토타입 에셋을 만든다.
+
+/Game/PC/ 아래의 에셋은 저장소에 포함되고 에디터에서 직접 고친다.
+이 스크립트는 에셋이 없을 때 처음 만드는 용도라서, 이미 있는 에셋은 건드리지 않는다.
+스크립트의 값으로 되돌리고 싶으면 --overwrite 를 붙인다 (행동 트리와 레벨은 덮어쓰지 않는다).
 
 실행: 에디터의 Output Log에서
     py "C:/UnrealEngine/ProjectC/Tools/pc_create_combat_assets.py"
+    py "C:/UnrealEngine/ProjectC/Tools/pc_create_combat_assets.py" --overwrite
 """
 import os
+import sys
 
 import unreal
+
+OVERWRITE = "--overwrite" in sys.argv
 
 ROOT = "/Game/PC"
 INPUT_DIR = f"{ROOT}/Input"
 COMBAT_DIR = f"{ROOT}/Combat"
 ABILITY_DIR = f"{COMBAT_DIR}/Abilities"
+MONSTER_DIR = f"{COMBAT_DIR}/Monsters"
+AI_DIR = f"{COMBAT_DIR}/AI"
 MAP_PATH = f"{ROOT}/Maps/Lvl_PC_CombatTest"
-CSV_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Data", "DT_PC_Combatants.csv")
+DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Data")
 
 MANNY_MESH = "/Game/Characters/Mannequins/Meshes/SKM_Manny_Simple"
 UNARMED_ANIM_BP = "/Game/Characters/Mannequins/Anims/Unarmed/ABP_Unarmed"
@@ -22,19 +32,27 @@ eal = unreal.EditorAssetLibrary
 
 
 def load_or_create(name, folder, asset_class, factory):
+    """(에셋, 값을 설정해야 하는가)를 돌려준다."""
     path = f"{folder}/{name}"
     if eal.does_asset_exist(path):
-        return eal.load_asset(path)
+        return eal.load_asset(path), OVERWRITE
     asset = asset_tools.create_asset(name, folder, asset_class, factory)
     if asset is None:
         raise RuntimeError(f"에셋을 만들지 못했습니다: {path}")
-    return asset
+    return asset, True
 
 
 def make_tag(name):
     tag = unreal.GameplayTag()
     tag.import_text(f'(TagName="{name}")')
     return tag
+
+
+def make_tag_container(*names):
+    container = unreal.GameplayTagContainer()
+    inner = ",".join(f'(TagName="{name}")' for name in names)
+    container.import_text(f"(GameplayTags=({inner}))")
+    return container
 
 
 def make_key(name):
@@ -51,16 +69,18 @@ def save(asset):
 def create_input():
     actions = {}
     for name in ("Attack", "Guard", "Bash", "Dodge"):
-        actions[name] = load_or_create(f"IA_PC_{name}", INPUT_DIR, unreal.InputAction, unreal.InputAction_Factory())
-        save(actions[name])
+        actions[name], configure = load_or_create(f"IA_PC_{name}", INPUT_DIR, unreal.InputAction, unreal.InputAction_Factory())
+        if configure:
+            save(actions[name])
 
-    context = load_or_create("IMC_PC_Combat", INPUT_DIR, unreal.InputMappingContext, unreal.InputMappingContext_Factory())
-    context.unmap_all()
-    context.map_key(actions["Attack"], make_key("LeftMouseButton"))
-    context.map_key(actions["Guard"], make_key("RightMouseButton"))
-    context.map_key(actions["Bash"], make_key("F"))
-    context.map_key(actions["Dodge"], make_key("LeftShift"))
-    save(context)
+    context, configure = load_or_create("IMC_PC_Combat", INPUT_DIR, unreal.InputMappingContext, unreal.InputMappingContext_Factory())
+    if configure:
+        context.unmap_all()
+        context.map_key(actions["Attack"], make_key("LeftMouseButton"))
+        context.map_key(actions["Guard"], make_key("RightMouseButton"))
+        context.map_key(actions["Bash"], make_key("F"))
+        context.map_key(actions["Dodge"], make_key("LeftShift"))
+        save(context)
     return actions, context
 
 
@@ -68,12 +88,13 @@ def create_input():
 def create_ability(name, ability_class, tag, **props):
     factory = unreal.DataAssetFactory()
     factory.set_editor_property("data_asset_class", unreal.PCAbilityData)
-    data = load_or_create(name, ABILITY_DIR, unreal.PCAbilityData, factory)
-    data.set_editor_property("ability_class", ability_class)
-    data.set_editor_property("ability_tag", make_tag(tag))
-    for key, value in props.items():
-        data.set_editor_property(key, value)
-    save(data)
+    data, configure = load_or_create(name, ABILITY_DIR, unreal.PCAbilityData, factory)
+    if configure:
+        data.set_editor_property("ability_class", ability_class)
+        data.set_editor_property("ability_tag", make_tag(tag))
+        for key, value in props.items():
+            data.set_editor_property(key, value)
+        save(data)
     return data
 
 
@@ -85,8 +106,10 @@ def timing(windup, active, recovery):
     return value
 
 
-def shape(hit_range, half_angle):
+def shape(hit_range, half_angle, shape_type=unreal.PCHitShapeType.SECTOR, target_rule=unreal.PCHitTargetRule.FIRST_ONLY):
     value = unreal.PCHitShape()
+    value.set_editor_property("shape_type", shape_type)
+    value.set_editor_property("target_rule", target_rule)
     value.set_editor_property("range", hit_range)
     value.set_editor_property("half_angle_deg", half_angle)
     return value
@@ -94,6 +117,7 @@ def shape(hit_range, half_angle):
 
 def create_abilities():
     light = make_tag("Threat.Light")
+    heavy = make_tag("Threat.Heavy")
     return {
         "Slash": create_ability(
             "DA_PC_Slash", unreal.PCAbility_MeleeAttack, "Ability.Attack.Slash",
@@ -116,17 +140,25 @@ def create_abilities():
             timing=timing(0.80, 0.12, 0.90), stamina_cost=0.0,
             damage=20.0, guard_stamina_damage=30.0, stagger_time=0.35,
             stagger_only_on_windup=False, threat_tag=light, hit_shape=shape(220.0, 50.0)),
+        "Lunge": create_ability(
+            "DA_PC_Lunge", unreal.PCAbility_LungeAttack, "Ability.Attack.Lunge",
+            timing=timing(1.00, 0.30, 1.10), stamina_cost=0.0,
+            damage=28.0, guard_stamina_damage=45.0, stagger_time=0.5,
+            stagger_only_on_windup=False, threat_tag=heavy, hit_shape=shape(170.0, 40.0),
+            lunge_distance=450.0),
     }
 
 
 # ---------- 데이터테이블 ----------
-def create_data_table():
+def create_data_table(name, row_struct, csv_name):
     factory = unreal.DataTableFactory()
-    factory.set_editor_property("struct", unreal.PCCombatantRow.static_struct())
-    table = load_or_create("DT_PC_Combatants", COMBAT_DIR, unreal.DataTable, factory)
-    if not unreal.DataTableFunctionLibrary.fill_data_table_from_csv_file(table, CSV_PATH):
-        raise RuntimeError(f"CSV를 가져오지 못했습니다: {CSV_PATH}")
-    save(table)
+    factory.set_editor_property("struct", row_struct)
+    table, configure = load_or_create(name, COMBAT_DIR, unreal.DataTable, factory)
+    if configure:
+        csv_path = os.path.join(DATA_DIR, csv_name)
+        if not unreal.DataTableFunctionLibrary.fill_data_table_from_csv_file(table, csv_path):
+            raise RuntimeError(f"CSV를 가져오지 못했습니다: {csv_path}")
+        save(table)
     return table
 
 
@@ -135,6 +167,56 @@ def row_handle(table, row_name):
     handle.set_editor_property("data_table", table)
     handle.set_editor_property("row_name", row_name)
     return handle
+
+
+# ---------- 행동 트리 ----------
+def create_behavior_tree():
+    name = "ST_PC_MeleeMonster"
+    path = f"{AI_DIR}/{name}"
+    if eal.does_asset_exist(path):
+        return eal.load_asset(path)
+    tree = unreal.PCStateTreeBuilderLibrary.create_melee_monster_state_tree(AI_DIR, name)
+    if tree is None:
+        raise RuntimeError(f"행동 트리를 만들지 못했습니다: {path}")
+    save(tree)
+    return tree
+
+
+# ---------- 몬스터 정의 ----------
+def attack_option(tag, min_range, max_range, weight=1.0, cooldown=0.0, rest_after=1.0, min_health=0.0, max_health=1.0):
+    option = unreal.PCMonsterAttackOption()
+    option.set_editor_property("ability_tag", make_tag(tag))
+    option.set_editor_property("min_range", min_range)
+    option.set_editor_property("max_range", max_range)
+    option.set_editor_property("weight", weight)
+    option.set_editor_property("cooldown", cooldown)
+    option.set_editor_property("min_health_ratio", min_health)
+    option.set_editor_property("max_health_ratio", max_health)
+    option.set_editor_property("rest_after", rest_after)
+    return option
+
+
+def create_monsters(abilities, stats_table, rank_table, tree):
+    factory = unreal.DataAssetFactory()
+    factory.set_editor_property("data_asset_class", unreal.PCMonsterData)
+    werewolf, configure = load_or_create("DA_PC_Werewolf", MONSTER_DIR, unreal.PCMonsterData, factory)
+    if configure:
+        werewolf.set_editor_property("display_name", "늑대인간")
+        werewolf.set_editor_property("rank_row", row_handle(rank_table, "Normal"))
+        werewolf.set_editor_property("habitat_tags", make_tag_container("Monster.Habitat.Forest"))
+        werewolf.set_editor_property("stats_row", row_handle(stats_table, "Werewolf"))
+        werewolf.set_editor_property("abilities", [abilities["Claw"], abilities["Lunge"]])
+        werewolf.set_editor_property("attack_options", [
+            # 거리는 대상의 몸 표면까지의 거리
+            attack_option("Ability.Attack.Claw", 0.0, 180.0, weight=1.0, cooldown=0.0, rest_after=1.2),
+            attack_option("Ability.Attack.Lunge", 300.0, 600.0, weight=1.0, cooldown=6.0, rest_after=1.8),
+        ])
+        werewolf.set_editor_property("behavior_tree", tree)
+        werewolf.set_editor_property("detection_range", 1500.0)
+        werewolf.set_editor_property("lose_target_range", 2500.0)
+        werewolf.set_editor_property("scale", 1.3)
+        save(werewolf)
+    return {"Werewolf": werewolf}
 
 
 # ---------- 블루프린트 ----------
@@ -167,84 +249,95 @@ def input_binding(action, tag, hold):
     return binding
 
 
-def create_blueprints(actions, context, abilities, table):
-    player = create_blueprint("BP_PC_Player", unreal.PCPlayerCharacter)
-    defaults = defaults_of(player)
-    set_mannequin(defaults)
-    defaults.set_editor_property("combatant_row", row_handle(table, "Player"))
-    defaults.set_editor_property("starting_abilities", [abilities["Slash"], abilities["ShieldBash"], abilities["Guard"], abilities["Dodge"]])
-    defaults.set_editor_property("mapping_contexts", [
-        eal.load_asset("/Game/Input/IMC_Default"),
-        eal.load_asset("/Game/Input/IMC_MouseLook"),
-        context,
-    ])
-    defaults.set_editor_property("move_action", eal.load_asset("/Game/Input/Actions/IA_Move"))
-    defaults.set_editor_property("look_action", eal.load_asset("/Game/Input/Actions/IA_Look"))
-    defaults.set_editor_property("mouse_look_action", eal.load_asset("/Game/Input/Actions/IA_MouseLook"))
-    defaults.set_editor_property("ability_bindings", [
-        input_binding(actions["Attack"], "Ability.Attack.Slash", False),
-        input_binding(actions["Bash"], "Ability.Attack.ShieldBash", False),
-        input_binding(actions["Guard"], "Ability.Guard", True),
-        input_binding(actions["Dodge"], "Ability.Dodge", False),
-    ])
-    finish_blueprint(player)
+def create_blueprints(actions, context, abilities, stats_table, monsters):
+    player, configure = create_blueprint("BP_PC_Player", unreal.PCPlayerCharacter)
+    if configure:
+        defaults = defaults_of(player)
+        set_mannequin(defaults)
+        defaults.set_editor_property("combatant_row", row_handle(stats_table, "Player"))
+        defaults.set_editor_property("starting_abilities", [abilities["Slash"], abilities["ShieldBash"], abilities["Guard"], abilities["Dodge"]])
+        defaults.set_editor_property("mapping_contexts", [
+            eal.load_asset("/Game/Input/IMC_Default"),
+            eal.load_asset("/Game/Input/IMC_MouseLook"),
+            context,
+        ])
+        defaults.set_editor_property("move_action", eal.load_asset("/Game/Input/Actions/IA_Move"))
+        defaults.set_editor_property("look_action", eal.load_asset("/Game/Input/Actions/IA_Look"))
+        defaults.set_editor_property("mouse_look_action", eal.load_asset("/Game/Input/Actions/IA_MouseLook"))
+        defaults.set_editor_property("ability_bindings", [
+            input_binding(actions["Attack"], "Ability.Attack.Slash", False),
+            input_binding(actions["Bash"], "Ability.Attack.ShieldBash", False),
+            input_binding(actions["Guard"], "Ability.Guard", True),
+            input_binding(actions["Dodge"], "Ability.Dodge", False),
+        ])
+        finish_blueprint(player)
 
-    werewolf = create_blueprint("BP_PC_Werewolf", unreal.PCMonsterBase)
-    defaults = defaults_of(werewolf)
-    set_mannequin(defaults)
-    defaults.set_editor_property("combatant_row", row_handle(table, "Werewolf"))
-    defaults.set_editor_property("starting_abilities", [abilities["Claw"]])
-    defaults.set_editor_property("auto_attack", True)
-    defaults.set_editor_property("auto_attack_tag", make_tag("Ability.Attack.Claw"))
-    defaults.set_editor_property("auto_attack_interval", 3.0)
-    finish_blueprint(werewolf)
+    # 몬스터 블루프린트는 겉모습만 갖는다. 수치, 기술, 행동은 몬스터 정의 에셋에서 온다.
+    werewolf, configure = create_blueprint("BP_PC_Werewolf", unreal.PCMonsterBase)
+    if configure:
+        defaults = defaults_of(werewolf)
+        set_mannequin(defaults)
+        defaults.set_editor_property("monster_data", monsters["Werewolf"])
+        defaults.set_editor_property("combatant_row", unreal.DataTableRowHandle())
+        defaults.set_editor_property("starting_abilities", [])
+        finish_blueprint(werewolf)
 
-    game_mode = create_blueprint("BP_PC_CombatGameMode", unreal.PCCombatGameMode)
-    defaults_of(game_mode).set_editor_property("default_pawn_class", player.generated_class())
-    finish_blueprint(game_mode)
+    game_mode, configure = create_blueprint("BP_PC_CombatGameMode", unreal.PCCombatGameMode)
+    if configure:
+        defaults_of(game_mode).set_editor_property("default_pawn_class", player.generated_class())
+        finish_blueprint(game_mode)
 
     return player, werewolf, game_mode
 
 
 # ---------- 테스트 레벨 ----------
 def create_level(werewolf, game_mode):
-    if eal.does_asset_exist(MAP_PATH):
-        unreal.log(f"레벨이 이미 있어서 건너뜁니다: {MAP_PATH}")
-        return
-
     level_editor = unreal.get_editor_subsystem(unreal.LevelEditorSubsystem)
     actors = unreal.get_editor_subsystem(unreal.EditorActorSubsystem)
-    if not level_editor.new_level(MAP_PATH):
-        raise RuntimeError(f"레벨을 만들지 못했습니다: {MAP_PATH}")
 
-    floor = actors.spawn_actor_from_class(unreal.StaticMeshActor, unreal.Vector(0.0, 0.0, -50.0))
-    floor.static_mesh_component.set_static_mesh(eal.load_asset("/Engine/BasicShapes/Cube"))
-    floor.set_actor_scale3d(unreal.Vector(40.0, 40.0, 1.0))
-    floor.set_actor_label("Floor")
+    if eal.does_asset_exist(MAP_PATH):
+        level_editor.load_level(MAP_PATH)
+    else:
+        if not level_editor.new_level(MAP_PATH):
+            raise RuntimeError(f"레벨을 만들지 못했습니다: {MAP_PATH}")
 
-    actors.spawn_actor_from_class(unreal.DirectionalLight, unreal.Vector(0.0, 0.0, 600.0), unreal.Rotator(pitch=-50.0, yaw=35.0, roll=0.0))
-    sky_light = actors.spawn_actor_from_class(unreal.SkyLight, unreal.Vector(0.0, 0.0, 600.0))
-    sky_light.light_component.set_editor_property("real_time_capture", True)
-    actors.spawn_actor_from_class(unreal.SkyAtmosphere, unreal.Vector(0.0, 0.0, 0.0))
+        floor = actors.spawn_actor_from_class(unreal.StaticMeshActor, unreal.Vector(0.0, 0.0, -50.0))
+        floor.static_mesh_component.set_static_mesh(eal.load_asset("/Engine/BasicShapes/Cube"))
+        floor.set_actor_scale3d(unreal.Vector(40.0, 40.0, 1.0))
+        floor.set_actor_label("Floor")
 
-    actors.spawn_actor_from_class(unreal.PlayerStart, unreal.Vector(-400.0, 0.0, 100.0))
+        actors.spawn_actor_from_class(unreal.DirectionalLight, unreal.Vector(0.0, 0.0, 600.0), unreal.Rotator(pitch=-50.0, yaw=35.0, roll=0.0))
+        sky_light = actors.spawn_actor_from_class(unreal.SkyLight, unreal.Vector(0.0, 0.0, 600.0))
+        sky_light.light_component.set_editor_property("real_time_capture", True)
+        actors.spawn_actor_from_class(unreal.SkyAtmosphere, unreal.Vector(0.0, 0.0, 0.0))
 
-    wolf = actors.spawn_actor_from_class(werewolf.generated_class(), unreal.Vector(300.0, 0.0, 130.0), unreal.Rotator(pitch=0.0, yaw=180.0, roll=0.0))
-    wolf.set_actor_scale3d(unreal.Vector(1.3, 1.3, 1.3))
-    wolf.set_actor_label("Werewolf")
+        actors.spawn_actor_from_class(unreal.PlayerStart, unreal.Vector(-400.0, 0.0, 100.0))
 
-    world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
-    world.get_world_settings().set_editor_property("default_game_mode", game_mode.generated_class())
+        wolf = actors.spawn_actor_from_class(werewolf.generated_class(), unreal.Vector(600.0, 0.0, 130.0), unreal.Rotator(pitch=0.0, yaw=180.0, roll=0.0))
+        wolf.set_actor_label("Werewolf")
+
+        world = unreal.get_editor_subsystem(unreal.UnrealEditorSubsystem).get_editor_world()
+        world.get_world_settings().set_editor_property("default_game_mode", game_mode.generated_class())
+
+    # 몬스터가 길을 찾을 수 있도록 내비게이션 영역을 둔다 (바닥 전체를 덮는 크기)
+    if not any(isinstance(actor, unreal.NavMeshBoundsVolume) for actor in actors.get_all_level_actors()):
+        volume = actors.spawn_actor_from_class(unreal.NavMeshBoundsVolume, unreal.Vector(0.0, 0.0, 200.0))
+        volume.set_actor_scale3d(unreal.Vector(42.0, 42.0, 6.0))
+        volume.set_actor_label("NavBounds")
+
     level_editor.save_current_level()
 
 
 def main():
     actions, context = create_input()
     abilities = create_abilities()
-    table = create_data_table()
-    _, werewolf, game_mode = create_blueprints(actions, context, abilities, table)
+    stats_table = create_data_table("DT_PC_Combatants", unreal.PCCombatantRow.static_struct(), "DT_PC_Combatants.csv")
+    rank_table = create_data_table("DT_PC_MonsterRanks", unreal.PCMonsterRankRow.static_struct(), "DT_PC_MonsterRanks.csv")
+    tree = create_behavior_tree()
+    monsters = create_monsters(abilities, stats_table, rank_table, tree)
+    _, werewolf, game_mode = create_blueprints(actions, context, abilities, stats_table, monsters)
     create_level(werewolf, game_mode)
-    unreal.log("전투 프로토타입 에셋 생성 완료. /Game/PC/Maps/Lvl_PC_CombatTest 를 열고 Play 하세요.")
+    unreal.log("전투 프로토타입 에셋 준비 완료. /Game/PC/Maps/Lvl_PC_CombatTest 를 열고 Play 하세요.")
 
 
 main()

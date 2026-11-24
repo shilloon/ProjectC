@@ -54,11 +54,16 @@ USTRUCT()
 struct PCCOMBAT_API FPCStateTreeMoveToTargetInstanceData : public FPCMonsterStateTreeContext
 {
 	GENERATED_BODY()
+
+	/** 이동 요청이 받아들여지지 않아 대상 방향으로 직접 걸어가는 중인가 */
+	UPROPERTY()
+	bool bSteeringDirectly = false;
 };
 
 /**
  * 공격할 수 있는 거리까지 대상에게 다가간다. 거리는 몬스터 정의의 공격 목록에서 나온다.
  * 길찾기를 쓰고, 내비게이션 메시가 없으면 대상 방향으로 직진한다.
+ * 내비게이션 시스템 자체가 없어 이동 요청이 실패하면 대상 방향으로 직접 걸어간다.
  */
 USTRUCT(meta = (DisplayName = "PC: 대상에게 접근", Category = "PC|Monster"))
 struct PCCOMBAT_API FPCStateTreeTask_MoveToTarget : public FStateTreeTaskCommonBase
@@ -109,9 +114,13 @@ struct PCCOMBAT_API FPCStateTreeRestInstanceData : public FPCMonsterStateTreeCon
 {
 	GENERATED_BODY()
 
-	/** 0이면 마지막 공격이 요구한 숨 고르기 시간을 쓴다 */
+	/** 기본 대기 시간 */
 	UPROPERTY(EditAnywhere, Category = "Parameter", meta = (ClampMin = 0, Units = "s"))
 	float Duration = 0.f;
+
+	/** true면 마지막 공격이 요구한 숨 고르기 시간(공격 목록의 RestAfter)을 더한다 */
+	UPROPERTY(EditAnywhere, Category = "Parameter")
+	bool bAddAttackRest = false;
 
 	UPROPERTY()
 	float Remaining = 0.f;

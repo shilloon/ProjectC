@@ -10,6 +10,6 @@ public class ProjectCEditorTarget : TargetRules
 		Type = TargetType.Editor;
 		DefaultBuildSettings = BuildSettingsVersion.V7;
 		IncludeOrderVersion = EngineIncludeOrderVersion.Unreal5_8;
-		ExtraModuleNames.AddRange(new string[] { "ProjectC", "PCCore", "PCCombat" });
+		ExtraModuleNames.AddRange(new string[] { "ProjectC", "PCCore", "PCCombat", "PCCombatEditor" });
 	}
 }

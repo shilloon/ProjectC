@@ -24,7 +24,7 @@ void APCMonsterAIController::StartBehavior()
 	const UPCMonsterData* Data = GetMonsterData();
 	if (!Data || !Data->BehaviorTree)
 	{
-		UE_LOG(LogPC, Warning, TEXT("'%s': 몬스터 정의나 행동 트리가 없어 AI를 시작하지 않습니다"), *GetNameSafe(GetPawn()));
+		UE_LOG(LogPC, Log, TEXT("'%s': 몬스터 정의나 행동 트리가 없어 AI를 시작하지 않습니다"), *GetNameSafe(GetPawn()));
 		return;
 	}
 
