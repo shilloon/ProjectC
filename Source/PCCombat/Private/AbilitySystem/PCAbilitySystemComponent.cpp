@@ -1,6 +1,7 @@
 ﻿#include "AbilitySystem/PCAbilitySystemComponent.h"
 #include "Abilities/GameplayAbility.h"
 #include "Data/PCAbilityData.h"
+#include "PCGameplayTags.h"
 #include "PCLog.h"
 
 FGameplayAbilitySpecHandle UPCAbilitySystemComponent::GrantAbilityFromData(const UPCAbilityData* Data)
@@ -15,6 +16,16 @@ FGameplayAbilitySpecHandle UPCAbilitySystemComponent::GrantAbilityFromData(const
 	const FGameplayAbilitySpecHandle Handle = GiveAbility(Spec);
 	HandlesByAbilityTag.Add(Data->AbilityTag, Handle);
 	return Handle;
+}
+
+void UPCAbilitySystemComponent::RemoveAbilityByTag(FGameplayTag AbilityTag)
+{
+	FGameplayAbilitySpecHandle Handle;
+	if (HandlesByAbilityTag.RemoveAndCopyValue(AbilityTag, Handle))
+	{
+		CancelAbilityHandle(Handle);
+		ClearAbility(Handle);
+	}
 }
 
 bool UPCAbilitySystemComponent::TryActivateByAbilityTag(FGameplayTag AbilityTag)
@@ -43,5 +54,21 @@ FActiveGameplayEffectHandle UPCAbilitySystemComponent::ApplySetByCallerEffectToS
 	}
 
 	SpecHandle.Data->SetSetByCallerMagnitude(DataTag, Magnitude);
+	return ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+}
+
+FActiveGameplayEffectHandle UPCAbilitySystemComponent::ApplyTimedEffectToSelf(TSubclassOf<UGameplayEffect> EffectClass, float Duration, float Magnitude, AActor* Instigator)
+{
+	FGameplayEffectContextHandle Context = MakeEffectContext();
+	Context.AddInstigator(Instigator, Instigator);
+
+	const FGameplayEffectSpecHandle SpecHandle = MakeOutgoingSpec(EffectClass, 1.f, Context);
+	if (!SpecHandle.IsValid())
+	{
+		return FActiveGameplayEffectHandle();
+	}
+
+	SpecHandle.Data->SetSetByCallerMagnitude(PCTags::Data_Duration, Duration);
+	SpecHandle.Data->SetSetByCallerMagnitude(PCTags::Data_Magnitude, Magnitude);
 	return ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 }

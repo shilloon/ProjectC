@@ -17,4 +17,11 @@ public:
 
 	/** 스폰이 끝나기 전에 호출해 시작 기술을 넣는다 */
 	void AddStartingAbility(UPCAbilityData* Data);
+
+	/** 테스트에서 겨누는 방향을 직접 정한다. 영벡터면 정면을 겨눈다. */
+	void SetAimDirection(const FVector& Direction) { AimOverride = Direction; }
+	virtual FVector GetAimDirection(const FVector& From) const override;
+
+private:
+	FVector AimOverride = FVector::ZeroVector;
 };

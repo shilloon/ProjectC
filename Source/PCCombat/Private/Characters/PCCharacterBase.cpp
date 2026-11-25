@@ -13,6 +13,7 @@
 #include "Data/PCAbilityData.h"
 #include "Data/PCCombatantRow.h"
 #include "Engine/World.h"
+#include "Equipment/PCEquipmentComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameplayEffectTypes.h"
 #include "Hit/PCHitResolver.h"
@@ -70,6 +71,16 @@ void APCCharacterBase::BeginPlay()
 	InitializeFromRow();
 	OnStatsInitialized();
 	GrantStartingAbilities();
+
+	if (Equipment)
+	{
+		Equipment->InitializeEquipment(AbilitySystemComponent);
+	}
+}
+
+FVector APCCharacterBase::GetAimDirection(const FVector& From) const
+{
+	return GetActorForwardVector();
 }
 
 void APCCharacterBase::InitializeFromRow()
@@ -139,7 +150,11 @@ EPCHitOutcome APCCharacterBase::ReceiveHit(const FPCHitInfo& Hit)
 		return EPCHitOutcome::Miss;
 	}
 
-	const bool bGuarding = HasStateTag(PCTags::State_Guarding);
+	// 피해로 죽거나 경직되면 상태가 바뀌므로, 타격 반응의 조건은 맞는 순간의 상태로 판단한다
+	FGameplayTagContainer TagsWhenHit;
+	AbilitySystemComponent->GetOwnedGameplayTags(TagsWhenHit);
+
+	const bool bGuarding = TagsWhenHit.HasTag(PCTags::State_Guarding);
 	const bool bBlockable = !Hit.Data->ThreatTag.MatchesTag(PCTags::Threat_Unblockable);
 	const bool bFromFront = FPCHitResolver::IsAttackFromFront(GetActorLocation(), GetActorForwardVector(), Hit.Origin, GuardHalfAngleDeg);
 
@@ -150,30 +165,52 @@ EPCHitOutcome APCCharacterBase::ReceiveHit(const FPCHitInfo& Hit)
 			AbilitySystemComponent->ApplySetByCallerEffectToSelf(UPCEffect_Stamina::StaticClass(), PCTags::Data_Stamina, -Hit.Data->GuardStaminaDamage, Hit.Attacker);
 		}
 		ExecuteCue(PCTags::GameplayCue_Combat_Block, Hit);
-		ApplyKnockback(Hit.Origin, Hit.Data->BlockedKnockbackDistance);
 
-		if (GetStamina() <= 0.f)
-		{
-			ApplyStagger(GuardBreakStaggerTime);
-		}
+		// 기력이 바닥나면 방어가 깨진다
+		const float GuardBreakTime = GetStamina() <= 0.f ? GuardBreakStaggerTime : 0.f;
+		ApplyHitReactions(Hit, EPCHitOutcome::Blocked, TagsWhenHit, GuardBreakTime);
 		return EPCHitOutcome::Blocked;
 	}
 
-	// 피해로 죽거나 경직되면 상태가 바뀌므로, 예비 동작 중이었는지는 먼저 기록한다
-	const bool bWasWindingUp = HasStateTag(PCTags::State_Action_Windup);
+	// 무기를 바꾸는 중에 맞으면 공격의 경직 값과 관계없이 교체가 끊긴다
+	const bool bSwapping = Equipment && TagsWhenHit.HasTag(PCTags::State_Swapping);
+	const float SwapDamageMultiplier = bSwapping ? Equipment->SwapDamageTakenMultiplier : 1.f;
+	const float SwapStaggerTime = bSwapping ? Equipment->SwapInterruptStaggerTime : 0.f;
 
 	if (Hit.Data->Damage > 0.f)
 	{
-		AbilitySystemComponent->ApplySetByCallerEffectToSelf(UPCEffect_Damage::StaticClass(), PCTags::Data_Damage, -Hit.Data->Damage * Hit.DamageMultiplier, Hit.Attacker);
+		AbilitySystemComponent->ApplySetByCallerEffectToSelf(UPCEffect_Damage::StaticClass(), PCTags::Data_Damage,
+			-Hit.Data->Damage * Hit.DamageMultiplier * SwapDamageMultiplier, Hit.Attacker);
 	}
 	ExecuteCue(PCTags::GameplayCue_Combat_Hit, Hit);
-	ApplyKnockback(Hit.Origin, Hit.Data->KnockbackDistance);
-
-	if (!IsDead() && Hit.Data->StaggerTime > 0.f && (!Hit.Data->bStaggerOnlyOnWindup || bWasWindingUp))
-	{
-		ApplyStagger(Hit.Data->StaggerTime);
-	}
+	ApplyHitReactions(Hit, EPCHitOutcome::Hit, TagsWhenHit, SwapStaggerTime);
 	return EPCHitOutcome::Hit;
+}
+
+void APCCharacterBase::ApplyHitReactions(const FPCHitInfo& Hit, EPCHitOutcome Outcome, const FGameplayTagContainer& TagsWhenHit, float MinStaggerTime)
+{
+	float StaggerTime = MinStaggerTime;
+	float KnockbackDistance = 0.f;
+
+	for (const FPCHitReaction& Reaction : Hit.Data->HitReactions)
+	{
+		if (!Reaction.Matches(Outcome, TagsWhenHit))
+		{
+			continue;
+		}
+
+		// 경직과 밀려남은 조건이 맞는 줄 중 가장 큰 값 하나만 쓴다
+		StaggerTime = FMath::Max(StaggerTime, Reaction.StaggerTime);
+		KnockbackDistance = FMath::Max(KnockbackDistance, Reaction.KnockbackDistance);
+
+		if (Reaction.EffectClass && Reaction.EffectDuration > 0.f && !IsDead())
+		{
+			AbilitySystemComponent->ApplyTimedEffectToSelf(Reaction.EffectClass, Reaction.EffectDuration, Reaction.EffectMagnitude, Hit.Attacker);
+		}
+	}
+
+	ApplyKnockback(Hit.Origin, KnockbackDistance);
+	ApplyStagger(StaggerTime);
 }
 
 void APCCharacterBase::ExecuteCue(FGameplayTag CueTag, const FPCHitInfo& Hit)

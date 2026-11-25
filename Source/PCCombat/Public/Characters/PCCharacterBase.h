@@ -14,6 +14,7 @@ class UPCVitalAttributeSet;
 class UPCCombatAttributeSet;
 class UPCAbilityData;
 class UPCCombatPresenterComponent;
+class UPCEquipmentComponent;
 struct FOnAttributeChangeData;
 
 /** 판정 코드가 내보낸 GameplayCue를 겉모습 쪽에 전달한다 */
@@ -42,6 +43,15 @@ public:
 	virtual void HandleGameplayCue(AActor* Self, FGameplayTag GameplayCueTag, EGameplayCueEvent::Type EventType, const FGameplayCueParameters& Parameters) override;
 
 	UPCAbilitySystemComponent* GetPCAbilitySystemComponent() const { return AbilitySystemComponent; }
+
+	/** 무기를 쓰는 캐릭터만 가진다. 없으면 nullptr. */
+	UPCEquipmentComponent* GetEquipment() const { return Equipment; }
+
+	/**
+	 * From에서 쏠 때 겨누는 방향. 기본은 캐릭터의 정면이다.
+	 * 플레이어는 화면 가운데가 가리키는 곳을 향하도록 바꾼다.
+	 */
+	virtual FVector GetAimDirection(const FVector& From) const;
 
 	/** 방어 능력이 발동할 때 막을 수 있는 각도를 알려준다 */
 	void SetGuardHalfAngle(float HalfAngleDeg) { GuardHalfAngleDeg = HalfAngleDeg; }
@@ -108,6 +118,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PC|Components")
 	TObjectPtr<UPCCombatPresenterComponent> Presenter;
 
+	/** 자식이 생성자에서 만들어 넣는다. 무기를 쓰지 않는 캐릭터(몬스터)는 비워 둔다. */
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "PC|Components")
+	TObjectPtr<UPCEquipmentComponent> Equipment;
+
 private:
 	void InitializeFromRow();
 	void GrantStartingAbilities();
@@ -117,6 +131,9 @@ private:
 	void OnDeadTagChanged(const FGameplayTag Tag, int32 NewCount);
 	void OnMoveSpeedMultiplierChanged(const FOnAttributeChangeData& Data);
 	void ExecuteCue(FGameplayTag CueTag, const FPCHitInfo& Hit);
+
+	/** 기술의 타격 반응 중 조건이 맞는 것을 적용한다. MinStaggerTime은 반응과 무관하게 보장하는 최소 경직이다. */
+	void ApplyHitReactions(const FPCHitInfo& Hit, EPCHitOutcome Outcome, const FGameplayTagContainer& TagsWhenHit, float MinStaggerTime);
 
 	float GuardHalfAngleDeg = 70.f;
 	float StaminaRegenDelay = 1.f;

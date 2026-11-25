@@ -45,25 +45,16 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0))
 	float GuardStaminaDamage = 0.f;
 
-	/** 맞은 대상의 경직 시간. 0이면 경직 없음. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0, Units = "s"))
-	float StaggerTime = 0.f;
-
-	/** 맞은 대상이 공격자 반대쪽으로 밀려나는 거리. 대상의 경직 저항만큼 줄어든다. */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0, Units = "cm"))
-	float KnockbackDistance = 0.f;
-
-	/** 방패로 막은 대상이 밀려나는 거리 */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0, Units = "cm"))
-	float BlockedKnockbackDistance = 0.f;
+	/**
+	 * 공격이 닿았을 때 대상에게 일어나는 일 (경직, 밀려남, 지속 효과).
+	 * 한 줄이 "조건 → 결과"이고, 기술마다 다르게 적는다. 비어 있으면 피해만 준다.
+	 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (TitleProperty = "When"))
+	TArray<FPCHitReaction> HitReactions;
 
 	/** 타격 순간 때린 쪽과 맞은 쪽이 멈추는 시간 (겉모습 전용) */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0, ClampMax = 0.5, Units = "s"))
 	float HitStopTime = 0.f;
-
-	/** true면 대상이 예비 동작 중일 때만 경직시킨다 (방패 밀기: 타이밍을 맞춰야 끊는다) */
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack")
-	bool bStaggerOnlyOnWindup = false;
 
 	/** 위험 등급. 예고 강도와 방어 가능 여부를 정한다. */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (Categories = "Threat"))
@@ -75,6 +66,10 @@ public:
 	/** 돌진 공격 전용: 판정 구간 동안 앞으로 이동하는 거리 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Attack", meta = (ClampMin = 0, Units = "cm"))
 	float LungeDistance = 0.f;
+
+	/** 원거리 공격 전용: 쏘는 투사체 */
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ranged")
+	FPCProjectileSpec Projectile;
 
 	/** 방어 전용: 정면 기준 막을 수 있는 반각 */
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Guard", meta = (ClampMin = 0, ClampMax = 180, Units = "deg"))

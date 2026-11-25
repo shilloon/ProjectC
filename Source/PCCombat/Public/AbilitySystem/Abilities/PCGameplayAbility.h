@@ -38,6 +38,12 @@ protected:
 	/** 단계에 들어가고, Duration 뒤에 다음 단계로 넘어간다. Recovery가 끝나면 능력이 끝난다. */
 	void StartPhase(EPCActionPhase Phase, float Duration);
 
+	/** 단계의 길이. 기본은 기술 데이터의 시간이고, 자식이 다른 출처(무기의 넣고 드는 시간 등)로 바꿀 수 있다. */
+	virtual float GetPhaseDuration(EPCActionPhase Phase) const;
+
+	/** 예비 동작이 시작됐음을 겉모습에 알린다 (위험도 표시, 범위 표시) */
+	void ExecuteWindupCue();
+
 	/** 단계가 바뀔 때 호출된다. 능력이 끝나면 NewPhase가 None이다. */
 	virtual void OnPhaseChanged(EPCActionPhase OldPhase, EPCActionPhase NewPhase) {}
 

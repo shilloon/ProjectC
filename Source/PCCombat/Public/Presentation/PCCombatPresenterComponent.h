@@ -6,7 +6,7 @@
 #include "PCCombatPresenterComponent.generated.h"
 
 class APCCharacterBase;
-class UStaticMesh;
+class UPCWeaponData;
 class UStaticMeshComponent;
 struct FGameplayCueParameters;
 struct FPCHitShape;
@@ -23,21 +23,9 @@ class PCCOMBAT_API UPCCombatPresenterComponent : public UActorComponent
 public:
 	UPCCombatPresenterComponent();
 
-	/** 손에 검과 방패 도형을 붙일지 */
+	/** 지금 든 무기의 도형을 손에 붙일지. 도형은 무기 에셋의 외형 목록에서 온다. */
 	UPROPERTY(EditAnywhere, Category = "PC|Presentation")
 	bool bShowWeapons = true;
-
-	UPROPERTY(EditAnywhere, Category = "PC|Presentation")
-	TSoftObjectPtr<UStaticMesh> SwordMesh;
-
-	UPROPERTY(EditAnywhere, Category = "PC|Presentation")
-	TSoftObjectPtr<UStaticMesh> ShieldMesh;
-
-	UPROPERTY(EditAnywhere, Category = "PC|Presentation")
-	FName SwordSocket = TEXT("hand_r");
-
-	UPROPERTY(EditAnywhere, Category = "PC|Presentation")
-	FName ShieldSocket = TEXT("hand_l");
 
 protected:
 	virtual void BeginPlay() override;
@@ -46,7 +34,8 @@ private:
 	void HandleCombatCue(FGameplayTag CueTag, const FGameplayCueParameters& Parameters);
 	void OnGuardTagChanged(const FGameplayTag Tag, int32 NewCount);
 
-	UStaticMeshComponent* CreateWeaponMesh(const TSoftObjectPtr<UStaticMesh>& Mesh, FName Socket, const FVector& Scale);
+	/** 든 무기가 바뀌면 손의 도형을 새 무기의 것으로 바꾼다 */
+	void OnWeaponChanged(const UPCWeaponData* NewWeapon, const UPCWeaponData* OldWeapon);
 	/** 아주 짧게 액터의 시간을 멈춘다 */
 	void PlayHitStop(float Duration);
 	void EndHitStop();
@@ -61,6 +50,13 @@ private:
 	UPROPERTY()
 	TObjectPtr<APCCharacterBase> OwnerCharacter;
 
+	/** 지금 든 무기의 도형들 */
 	UPROPERTY()
-	TObjectPtr<UStaticMeshComponent> ShieldComponent;
+	TArray<TObjectPtr<UStaticMeshComponent>> WeaponParts;
+
+	/** WeaponParts 중 방어할 때 몸 앞으로 올라오는 것 (방패). 없으면 nullptr. */
+	UPROPERTY()
+	TObjectPtr<UStaticMeshComponent> GuardPart;
+
+	FName GuardPartSocket;
 };

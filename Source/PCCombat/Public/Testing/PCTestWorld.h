@@ -2,10 +2,14 @@
 
 #include "CoreMinimal.h"
 #include "AbilitySystem/Abilities/PCAbility_MeleeAttack.h"
+#include "AbilitySystem/Abilities/PCAbility_RangedAttack.h"
+#include "AbilitySystem/Abilities/PCAbility_SwapWeapon.h"
 #include "Components/StaticMeshComponent.h"
 #include "Data/PCAbilityData.h"
 #include "Data/PCMonsterData.h"
 #include "Data/PCMonsterRankRow.h"
+#include "Data/PCWeaponData.h"
+#include "Equipment/PCEquipmentComponent.h"
 #include "Engine/DataTable.h"
 #include "Engine/Engine.h"
 #include "Engine/StaticMesh.h"
@@ -75,6 +79,18 @@ struct FPCTestWorld
 		return Character;
 	}
 
+	/** 무기 목록과 교체 기술을 가진 캐릭터를 스폰한다. 첫 번째 무기를 들고 시작한다. */
+	APCTestCharacter* SpawnArmed(const FVector& Location, float Yaw, const TArray<UPCWeaponData*>& Weapons, UPCAbilityData* SwapAbility) const
+	{
+		const FTransform Transform(FRotator(0.f, Yaw, 0.f), Location);
+		APCTestCharacter* Character = World->SpawnActorDeferred<APCTestCharacter>(
+			APCTestCharacter::StaticClass(), Transform, nullptr, nullptr, ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
+		Character->GetEquipment()->Loadout.Append(Weapons);
+		Character->GetEquipment()->SwapAbility = SwapAbility;
+		Character->FinishSpawning(Transform);
+		return Character;
+	}
+
 	APCTestMonster* SpawnMonster(const FVector& Location, float Yaw, UPCMonsterData* MonsterData) const
 	{
 		const FTransform Transform(FRotator(0.f, Yaw, 0.f), Location);
@@ -104,6 +120,61 @@ namespace PCTest
 		Data->HitShape.Range = 200.f;
 		Data->HitShape.HalfAngleDeg = 45.f;
 		return Data;
+	}
+
+	/** 타격 반응 한 줄을 추가하고, 조건을 더 붙일 수 있게 돌려준다 */
+	inline FPCHitReaction& AddReaction(UPCAbilityData* Data, EPCHitReactionWhen When, float StaggerTime, float KnockbackDistance)
+	{
+		FPCHitReaction& Reaction = Data->HitReactions.AddDefaulted_GetRef();
+		Reaction.When = When;
+		Reaction.StaggerTime = StaggerTime;
+		Reaction.KnockbackDistance = KnockbackDistance;
+		return Reaction;
+	}
+
+	/** 원거리 공격 데이터. 기술 태그는 Ability.Attack, 직선으로 2000cm/s, 최대 3000cm. */
+	inline UPCAbilityData* MakeRangedData(float Damage)
+	{
+		UPCAbilityData* Data = NewObject<UPCAbilityData>(GetTransientPackage());
+		Data->AbilityClass = UPCAbility_RangedAttack::StaticClass();
+		Data->AbilityTag = PCTags::Ability_Attack;
+		Data->Timing.Windup = 0.1f;
+		Data->Timing.Active = 0.04f;
+		Data->Timing.Recovery = 0.1f;
+		Data->StaminaCost = 10.f;
+		Data->Damage = Damage;
+		Data->GuardStaminaDamage = 30.f;
+		Data->ThreatTag = PCTags::Threat_Light;
+		Data->Projectile.Speed = 2000.f;
+		Data->Projectile.GravityScale = 0.f;
+		Data->Projectile.MaxDistance = 3000.f;
+		return Data;
+	}
+
+	/** 무기 교체 기술 데이터. 넣고 드는 시간은 무기에서 오고, 그 밖의 시간은 0이다. */
+	inline UPCAbilityData* MakeSwapData()
+	{
+		UPCAbilityData* Data = NewObject<UPCAbilityData>(GetTransientPackage());
+		Data->AbilityClass = UPCAbility_SwapWeapon::StaticClass();
+		Data->AbilityTag = PCTags::Ability_SwapWeapon;
+		Data->Timing.Windup = 0.f;
+		Data->Timing.Active = 0.f;
+		Data->Timing.Recovery = 0.f;
+		return Data;
+	}
+
+	/** 주 공격 슬롯에 기술 하나를 가진 무기 */
+	inline UPCWeaponData* MakeWeapon(UPCAbilityData* PrimaryAbility, float SheatheTime, float DrawTime)
+	{
+		UPCWeaponData* Weapon = NewObject<UPCWeaponData>(GetTransientPackage());
+		Weapon->WeaponTag = PCTags::Weapon;
+		Weapon->SheatheTime = SheatheTime;
+		Weapon->DrawTime = DrawTime;
+
+		FPCWeaponAbilitySlot& Slot = Weapon->AbilitySlots.AddDefaulted_GetRef();
+		Slot.InputTag = PCTags::Input_Primary;
+		Slot.Ability = PrimaryAbility;
+		return Weapon;
 	}
 
 	/** 등급 행 하나만 가진 데이터테이블을 메모리에 만들어 몬스터 정의에 연결한다 */

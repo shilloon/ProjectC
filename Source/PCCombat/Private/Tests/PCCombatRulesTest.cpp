@@ -68,8 +68,7 @@ bool FPCCombatReceiveHitTest::RunTest(const FString& Parameters)
 	// 예비 동작 중에만 경직시키는 공격 (방패 밀기)
 	{
 		UPCAbilityData* Bash = MakeAttackData(3.f);
-		Bash->StaggerTime = 1.f;
-		Bash->bStaggerOnlyOnWindup = true;
+		AddReaction(Bash, EPCHitReactionWhen::Hit, 1.f, 0.f).RequiredTargetTags.AddTag(PCTags::State_Action_Windup);
 
 		APCTestCharacter* Idle = TestWorld.Spawn(FVector(150, 0, 200), 180.f);
 		Idle->ReceiveHit(MakeHit(Attacker, Bash));

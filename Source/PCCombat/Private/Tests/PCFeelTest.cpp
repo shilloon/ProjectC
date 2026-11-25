@@ -17,8 +17,8 @@ bool FPCFeelKnockbackTest::RunTest(const FString& Parameters)
 	TestWorld.SpawnFloor();
 
 	UPCAbilityData* Push = MakeAttackData(10.f);
-	Push->KnockbackDistance = 120.f;
-	Push->BlockedKnockbackDistance = 40.f;
+	AddReaction(Push, EPCHitReactionWhen::Hit, 0.f, 120.f);
+	AddReaction(Push, EPCHitReactionWhen::Blocked, 0.f, 40.f);
 
 	APCTestCharacter* Attacker = TestWorld.Spawn(FVector(0, 0, 100), 0.f);
 

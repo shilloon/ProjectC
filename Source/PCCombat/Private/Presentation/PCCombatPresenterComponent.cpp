@@ -5,6 +5,8 @@
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Data/PCAbilityData.h"
+#include "Data/PCWeaponData.h"
+#include "Equipment/PCEquipmentComponent.h"
 #include "DrawDebugHelpers.h"
 #include "Engine/StaticMesh.h"
 #include "GameplayEffectTypes.h"
@@ -20,8 +22,6 @@ namespace
 		TEXT("pc.Combat.ShowTelegraph"), 0,
 		TEXT("1이면 예비 동작 동안 공격 범위를 바닥에 표시한다"));
 
-	const FVector SwordScale(0.05f, 0.05f, 0.9f);
-	const FVector ShieldScale(0.6f, 0.6f, 0.05f);
 	const FVector ShieldGuardLocation(45.f, 0.f, 20.f);
 	const FRotator ShieldGuardRotation(90.f, 0.f, 0.f);
 	const FVector OverheadOffset(0.f, 0.f, 130.f);
@@ -69,9 +69,6 @@ namespace
 UPCCombatPresenterComponent::UPCCombatPresenterComponent()
 {
 	PrimaryComponentTick.bCanEverTick = false;
-
-	SwordMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Engine/BasicShapes/Cube.Cube")));
-	ShieldMesh = TSoftObjectPtr<UStaticMesh>(FSoftObjectPath(TEXT("/Engine/BasicShapes/Cylinder.Cylinder")));
 }
 
 void UPCCombatPresenterComponent::BeginPlay()
@@ -86,10 +83,15 @@ void UPCCombatPresenterComponent::BeginPlay()
 
 	OwnerCharacter->OnCombatCue.AddUObject(this, &UPCCombatPresenterComponent::HandleCombatCue);
 
-	if (bShowWeapons)
+	UPCEquipmentComponent* Equipment = OwnerCharacter->GetEquipment();
+	if (bShowWeapons && Equipment)
 	{
-		CreateWeaponMesh(SwordMesh, SwordSocket, SwordScale);
-		ShieldComponent = CreateWeaponMesh(ShieldMesh, ShieldSocket, ShieldScale);
+		// 이 컴포넌트의 BeginPlay는 캐릭터가 시작 무기를 들기 전에 불리므로, 변경 알림으로 처음 도형도 받는다
+		Equipment->OnWeaponChanged.AddUObject(this, &UPCCombatPresenterComponent::OnWeaponChanged);
+		if (const UPCWeaponData* Current = Equipment->GetCurrentWeapon())
+		{
+			OnWeaponChanged(Current, nullptr);
+		}
 
 		OwnerCharacter->GetPCAbilitySystemComponent()
 			->RegisterGameplayTagEvent(PCTags::State_Guarding, EGameplayTagEventType::NewOrRemoved)
@@ -97,26 +99,50 @@ void UPCCombatPresenterComponent::BeginPlay()
 	}
 }
 
-UStaticMeshComponent* UPCCombatPresenterComponent::CreateWeaponMesh(const TSoftObjectPtr<UStaticMesh>& Mesh, FName Socket, const FVector& Scale)
+void UPCCombatPresenterComponent::OnWeaponChanged(const UPCWeaponData* NewWeapon, const UPCWeaponData* OldWeapon)
 {
-	UStaticMesh* Loaded = Mesh.LoadSynchronous();
-	if (!Loaded)
+	for (UStaticMeshComponent* Part : WeaponParts)
 	{
-		return nullptr;
+		if (Part)
+		{
+			Part->DestroyComponent();
+		}
+	}
+	WeaponParts.Reset();
+	GuardPart = nullptr;
+
+	if (!NewWeapon || !OwnerCharacter)
+	{
+		return;
 	}
 
-	UStaticMeshComponent* Component = NewObject<UStaticMeshComponent>(OwnerCharacter);
-	Component->SetStaticMesh(Loaded);
-	Component->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	Component->SetupAttachment(OwnerCharacter->GetMesh(), Socket);
-	Component->RegisterComponent();
-	Component->SetRelativeScale3D(Scale);
-	return Component;
+	for (const FPCWeaponVisualPart& Visual : NewWeapon->VisualParts)
+	{
+		UStaticMesh* Loaded = Visual.Mesh.LoadSynchronous();
+		if (!Loaded)
+		{
+			continue;
+		}
+
+		UStaticMeshComponent* Part = NewObject<UStaticMeshComponent>(OwnerCharacter);
+		Part->SetStaticMesh(Loaded);
+		Part->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		Part->SetupAttachment(OwnerCharacter->GetMesh(), Visual.Socket);
+		Part->RegisterComponent();
+		Part->SetRelativeScale3D(Visual.Scale);
+		WeaponParts.Add(Part);
+
+		if (Visual.bRaiseOnGuard)
+		{
+			GuardPart = Part;
+			GuardPartSocket = Visual.Socket;
+		}
+	}
 }
 
 void UPCCombatPresenterComponent::OnGuardTagChanged(const FGameplayTag Tag, int32 NewCount)
 {
-	if (!ShieldComponent || !OwnerCharacter)
+	if (!GuardPart || !OwnerCharacter)
 	{
 		return;
 	}
@@ -125,12 +151,12 @@ void UPCCombatPresenterComponent::OnGuardTagChanged(const FGameplayTag Tag, int3
 	if (NewCount > 0)
 	{
 		// 방어 중: 방패를 몸 앞으로 올린다
-		ShieldComponent->AttachToComponent(OwnerCharacter->GetRootComponent(), Rules);
-		ShieldComponent->SetRelativeLocationAndRotation(ShieldGuardLocation, ShieldGuardRotation);
+		GuardPart->AttachToComponent(OwnerCharacter->GetRootComponent(), Rules);
+		GuardPart->SetRelativeLocationAndRotation(ShieldGuardLocation, ShieldGuardRotation);
 	}
 	else
 	{
-		ShieldComponent->AttachToComponent(OwnerCharacter->GetMesh(), Rules, ShieldSocket);
+		GuardPart->AttachToComponent(OwnerCharacter->GetMesh(), Rules, GuardPartSocket);
 	}
 }
 
@@ -176,6 +202,11 @@ void UPCCombatPresenterComponent::HandleCombatCue(FGameplayTag CueTag, const FGa
 		const float Scale = Parameters.RawMagnitude > 0.f ? 1.f : BlockedFeedbackScale;
 		PlayHitStop(Data ? Data->HitStopTime * Scale : 0.f);
 		PlayCameraShake(AttackerShakeScale * Scale);
+	}
+	else if (CueTag == PCTags::GameplayCue_Combat_Swap)
+	{
+		// 세기는 넣고 드는 데 걸리는 전체 시간
+		DrawDebugString(World, Location + OverheadOffset, TEXT("SWAP"), nullptr, FColor::White, Parameters.RawMagnitude);
 	}
 	else if (CueTag == PCTags::GameplayCue_Combat_Interrupt)
 	{

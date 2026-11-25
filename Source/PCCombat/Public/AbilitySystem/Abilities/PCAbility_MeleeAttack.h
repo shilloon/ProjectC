@@ -23,7 +23,6 @@ protected:
 	virtual void OnPhaseChanged(EPCActionPhase OldPhase, EPCActionPhase NewPhase) override;
 
 private:
-	void ExecuteWindupCue();
 	void TryHit();
 	void StopHitChecks();
 

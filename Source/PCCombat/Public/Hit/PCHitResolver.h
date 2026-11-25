@@ -25,6 +25,12 @@ struct PCCOMBAT_API FPCHitResolver
 	static AActor* FindFirstHittable(const FPCHitInfo& Hit);
 
 	/**
+	 * 대상 하나에 공격을 적용한다. 근접 공격과 투사체가 모두 이 함수를 거친다.
+	 * 공격이 닿았으면(막거나 맞음) 때린 쪽에 알려서 타격 멈춤 같은 겉모습이 나오게 하고, 전투 로그를 남긴다.
+	 */
+	static EPCHitOutcome ApplyHit(AActor* Target, const FPCHitInfo& Hit);
+
+	/**
 	 * "처음 닿은 하나" 규칙으로 공격을 적용한다.
 	 * 가까운 순서로 시도해서 처음으로 공격을 받은(막거나 맞은) 대상에서 멈춘다. 없으면 Miss.
 	 */

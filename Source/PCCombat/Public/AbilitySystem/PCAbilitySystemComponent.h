@@ -16,6 +16,11 @@ public:
 	/** 데이터 에셋이 지정한 능력 클래스를 부여한다. 데이터는 능력의 SourceObject로 전달된다. */
 	FGameplayAbilitySpecHandle GrantAbilityFromData(const UPCAbilityData* Data);
 
+	/** 기술 태그로 부여했던 능력을 회수한다. 실행 중이면 취소한다. */
+	void RemoveAbilityByTag(FGameplayTag AbilityTag);
+
+	bool HasAbility(FGameplayTag AbilityTag) const { return HandlesByAbilityTag.Contains(AbilityTag); }
+
 	/** 기술 태그로 발동을 시도한다. 발동했으면 true. */
 	bool TryActivateByAbilityTag(FGameplayTag AbilityTag);
 
@@ -24,6 +29,9 @@ public:
 
 	/** SetByCaller 수치 하나를 받는 이펙트를 자신에게 적용한다. 지속되는 이펙트면 나중에 제거할 수 있는 핸들을 돌려준다. */
 	FActiveGameplayEffectHandle ApplySetByCallerEffectToSelf(TSubclassOf<UGameplayEffect> EffectClass, FGameplayTag DataTag, float Magnitude, AActor* Instigator);
+
+	/** 지속 시간(Data.Duration)과 세기(Data.Magnitude)를 받는 이펙트를 자신에게 적용한다 (타격 반응의 둔화 등) */
+	FActiveGameplayEffectHandle ApplyTimedEffectToSelf(TSubclassOf<UGameplayEffect> EffectClass, float Duration, float Magnitude, AActor* Instigator);
 
 private:
 	TMap<FGameplayTag, FGameplayAbilitySpecHandle> HandlesByAbilityTag;

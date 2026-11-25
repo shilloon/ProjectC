@@ -1,6 +1,10 @@
 ﻿#include "Hit/PCHitResolver.h"
 #include "Hit/PCHittable.h"
+#include "AbilitySystemComponent.h"
+#include "AbilitySystemGlobals.h"
 #include "Data/PCAbilityData.h"
+#include "PCGameplayTags.h"
+#include "PCLog.h"
 #include "CollisionQueryParams.h"
 #include "CollisionShape.h"
 #include "Engine/OverlapResult.h"
@@ -123,6 +127,31 @@ AActor* FPCHitResolver::FindFirstHittable(const FPCHitInfo& Hit)
 	TArray<AActor*> Candidates;
 	FindHittables(Hit, Candidates);
 	return Candidates.Num() > 0 ? Candidates[0] : nullptr;
+}
+
+EPCHitOutcome FPCHitResolver::ApplyHit(AActor* Target, const FPCHitInfo& Hit)
+{
+	IPCHittable* Hittable = Cast<IPCHittable>(Target);
+	const EPCHitOutcome Outcome = (Hittable && Hit.Data) ? Hittable->ReceiveHit(Hit) : EPCHitOutcome::Miss;
+	if (Outcome == EPCHitOutcome::Miss)
+	{
+		return Outcome;
+	}
+
+	// 때린 쪽의 겉모습(타격 멈춤 등)에 공격이 닿았음을 알린다
+	if (UAbilitySystemComponent* AttackerASC = UAbilitySystemGlobals::GetAbilitySystemComponentFromActor(Hit.Attacker))
+	{
+		FGameplayCueParameters Parameters;
+		Parameters.Instigator = Target;
+		Parameters.SourceObject = Hit.Data;
+		Parameters.Location = Target->GetActorLocation();
+		Parameters.RawMagnitude = Outcome == EPCHitOutcome::Blocked ? 0.f : 1.f;
+		AttackerASC->ExecuteGameplayCue(PCTags::GameplayCue_Combat_HitConfirm, Parameters);
+	}
+
+	UE_LOG(LogPC, Log, TEXT("[전투] %s의 %s → %s: %s"), *GetNameSafe(Hit.Attacker), *Hit.Data->AbilityTag.ToString(), *GetNameSafe(Target),
+		Outcome == EPCHitOutcome::Blocked ? TEXT("막힘") : TEXT("맞음"));
+	return Outcome;
 }
 
 EPCHitOutcome FPCHitResolver::ResolveAttack(const FPCHitInfo& Hit, AActor*& OutVictim)

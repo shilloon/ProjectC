@@ -112,8 +112,7 @@ void UPCGameplayAbility::StartPhase(EPCActionPhase Phase, float Duration)
 
 void UPCGameplayAbility::AdvancePhase()
 {
-	const UPCAbilityData* Data = GetAbilityData();
-	if (!Data)
+	if (!GetAbilityData())
 	{
 		EndAsCancelled();
 		return;
@@ -122,15 +121,50 @@ void UPCGameplayAbility::AdvancePhase()
 	switch (CurrentPhase)
 	{
 	case EPCActionPhase::Windup:
-		StartPhase(EPCActionPhase::Active, Data->Timing.Active);
+		StartPhase(EPCActionPhase::Active, GetPhaseDuration(EPCActionPhase::Active));
 		break;
 	case EPCActionPhase::Active:
-		StartPhase(EPCActionPhase::Recovery, Data->Timing.Recovery);
+		StartPhase(EPCActionPhase::Recovery, GetPhaseDuration(EPCActionPhase::Recovery));
 		break;
 	default:
 		EndAbility(CurrentSpecHandle, CurrentActorInfo, CurrentActivationInfo, true, false);
 		break;
 	}
+}
+
+float UPCGameplayAbility::GetPhaseDuration(EPCActionPhase Phase) const
+{
+	const UPCAbilityData* Data = GetAbilityData();
+	if (!Data)
+	{
+		return 0.f;
+	}
+
+	switch (Phase)
+	{
+	case EPCActionPhase::Windup:   return Data->Timing.Windup;
+	case EPCActionPhase::Active:   return Data->Timing.Active;
+	case EPCActionPhase::Recovery: return Data->Timing.Recovery;
+	default:                       return 0.f;
+	}
+}
+
+void UPCGameplayAbility::ExecuteWindupCue()
+{
+	const UPCAbilityData* Data = GetAbilityData();
+	AActor* Avatar = GetAvatarActorFromActorInfo();
+	UAbilitySystemComponent* ASC = GetAbilitySystemComponentFromActorInfo();
+	if (!Data || !Avatar || !ASC)
+	{
+		return;
+	}
+
+	FGameplayCueParameters Parameters;
+	Parameters.Instigator = Avatar;
+	Parameters.SourceObject = Data;
+	Parameters.Location = Avatar->GetActorLocation();
+	Parameters.RawMagnitude = GetPhaseDuration(EPCActionPhase::Windup);
+	ASC->ExecuteGameplayCue(PCTags::GameplayCue_Combat_Windup, Parameters);
 }
 
 void UPCGameplayAbility::SetPhase(EPCActionPhase NewPhase)
